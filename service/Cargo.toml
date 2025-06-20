@@ -1,0 +1,13 @@
+[package]
+name = "shield-service"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+anyhow = "1.0.98"
+axum = { version = "0.8.4", features = ["macros"] }
+serde = "1.0.219"
+tokio = { version = "1.45.1", features = ["full"] }
+toml = "0.8.23"
+unifi-protect-client = "0.1.2"

@@ -504,6 +504,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "dioxus-feather-icons"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4906119a35bdf4d1d46d516b8a89779574ab58b5e47a02b51f58f3e7a91aab01"
+
+[[package]]
 name = "dioxus-fullstack"
 version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2031,6 +2037,19 @@ name = "shield-app"
 version = "0.1.0"
 dependencies = [
  "dioxus",
+ "dioxus-feather-icons",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "shield-models",
+ "web-sys",
+]
+
+[[package]]
+name = "shield-models"
+version = "0.1.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
@@ -2040,8 +2059,10 @@ dependencies = [
  "anyhow",
  "axum",
  "serde",
+ "shield-models",
  "tokio",
  "toml",
+ "tower-http",
  "unifi-protect-client",
 ]
 
@@ -2538,8 +2559,6 @@ checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
 [[package]]
 name = "unifi-protect-client"
 version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a5ea8ee2771ed6cdff17061d012f3e08ae6b6c0e71bac6eaef34f7e5add80884"
 dependencies = [
  "reqwest",
  "secrecy",

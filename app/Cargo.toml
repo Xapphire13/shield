@@ -3,9 +3,16 @@ name = "shield-app"
 version = "0.1.0"
 authors = ["Xapphire13"]
 edition = "2024"
+publish = false
 
 [dependencies]
 dioxus = { version = "0.6.1", features = [] }
+dioxus-feather-icons = "0.2.3"
+reqwest = { version = "0.12.20", features = ["json"] }
+serde = "1.0.219"
+serde_json = "1.0.140"
+shield-models = { version = "0.1.0", path = "../models" }
+web-sys = "0.3.77"
 
 [features]
 default = ["web"]

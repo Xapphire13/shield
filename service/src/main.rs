@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use axum::{Json, Router, debug_handler, extract::State, routing::get};
-use unifi_protect_client::{UnifiProtectClient, models::camera::Camera};
+use shield_models::{Camera, RecordingMode, RecordingSettings};
+use tower_http::cors::{Any, CorsLayer};
+use unifi_protect_client::UnifiProtectClient;
 
 use crate::{app_error::AppError, credentials::Credentials};
 
@@ -16,9 +18,11 @@ async fn main() {
         &credentials.username,
         &credentials.password,
     ));
+    let cors = CorsLayer::new().allow_origin(Any);
     let app = Router::new()
         .route("/cameras", get(list_cameras))
-        .with_state(client_state);
+        .with_state(client_state)
+        .layer(cors);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
     axum::serve(listener, app).await.unwrap();
@@ -27,8 +31,45 @@ async fn main() {
 #[debug_handler]
 async fn list_cameras(
     State(client): State<Arc<UnifiProtectClient>>,
-) -> Result<Json<Vec<Camera>>, AppError> {
-    let cameras = client.list_cameras().await?;
+) -> Result<Json<Vec<shield_models::Camera>>, AppError> {
+    let tags = client.get_device_tags().await?;
+    let cameras: Vec<Camera> = client
+        .list_cameras()
+        .await?
+        .into_iter()
+        .map(|camera| {
+            let tags = tags
+                .iter()
+                .filter_map(|tag| {
+                    if tag.device_macs.contains(&camera.mac) {
+                        Some(tag.name.clone())
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            Camera {
+                id: camera.id,
+                name: camera.name,
+                recording_settings: RecordingSettings {
+                    mode: match camera.recording_settings.mode {
+                        unifi_protect_client::models::camera::RecordingMode::Always => {
+                            RecordingMode::Always
+                        }
+                        unifi_protect_client::models::camera::RecordingMode::Schedule => {
+                            RecordingMode::Schedule
+                        }
+                        unifi_protect_client::models::camera::RecordingMode::Never => {
+                            RecordingMode::Never
+                        }
+                    },
+                },
+                is_recording: camera.is_recording,
+                tags,
+            }
+        })
+        .collect();
 
     Ok(Json(cameras))
 }

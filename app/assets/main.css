@@ -37,19 +37,56 @@ body {
     color: #b6b6b6;
 }
 
+.row-group {
+    background-color: #1c2029;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
 .row-group + .row-group {
     margin-top: 16px;
+}
+
+:last-of-type(.row-group) {
+    border-radius: 8px;
+    overflow: hidden;
 }
 
 .row-group__children {
     display: flex;
     flex-direction: column;
-    border-radius: 8px;
-    overflow: hidden;
     align-items: stretch;
 }
 
+.row-group__header {
+    margin: 8px;
+    display: flex;
+    align-items: center;
+}
+
 .row-group__label {
-    margin-left: 8px;
-    margin-bottom: 4px;
+    flex-grow: 1;
+    font-weight: bold;
+    font-size: 1.2rem;
+}
+
+.group-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.icon-button {
+    background: none;
+    border: 1px solid;
+    cursor: pointer;
+    color: white;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border-radius: 4px;
+    padding: 4px 8px;
+}
+
+.icon-button > i {
+    height: 24px;
 }

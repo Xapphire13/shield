@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use dioxus::prelude::*;
 
-use crate::components::{Camera, ui::RowGroup};
+use crate::components::{Camera, GroupActions, ui::RowGroup};
 
 mod components;
 
@@ -48,7 +48,11 @@ fn App() -> Element {
         document::Link { rel: "stylesheet", href: MAIN_CSS }
 
         {tag_groups.iter().map(|(tag, cameras)| rsx! {
-            RowGroup { label: tag,
+            RowGroup {
+                label: tag,
+                actions: rsx! {
+                    GroupActions {}
+                },
                 {cameras.iter().map(|&camera| rsx! {
                     Camera { camera: camera.clone() }
                 })}
@@ -56,7 +60,11 @@ fn App() -> Element {
         })}
 
         if !untagged_cameras.is_empty() {
-            RowGroup { label: "Untagged",
+            RowGroup {
+                label: "Untagged",
+                actions: rsx! {
+                    GroupActions {}
+                },
                 {untagged_cameras.iter().map(|&camera| rsx! {
                     Camera { camera: camera.clone() }
                 })}

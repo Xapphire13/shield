@@ -43,21 +43,28 @@ fn App() -> Element {
             untagged_cameras.push(camera);
         }
     }
+    let tags: Vec<String> = tag_groups.keys().cloned().collect();
 
     rsx! {
         document::Link { rel: "stylesheet", href: MAIN_CSS }
 
-        {tag_groups.iter().map(|(tag, cameras)| rsx! {
-            RowGroup {
-                label: tag,
-                actions: rsx! {
-                    GroupActions {}
-                },
-                {cameras.iter().map(|&camera| rsx! {
-                    Camera { camera: camera.clone() }
-                })}
-            }
-        })}
+        {
+            tags.iter()
+                .map(|tag| {
+                    let cameras = tag_groups.get(tag).unwrap();
+                    rsx! {
+                        RowGroup {
+                            label: tag,
+                            actions: rsx! {
+                                GroupActions {}
+                            },
+                            {cameras.iter().map(|&camera| rsx! {
+                                Camera { camera: camera.clone() }
+                            })}
+                        }
+                    }
+                })
+        }
 
         if !untagged_cameras.is_empty() {
             RowGroup {

@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use axum::{Json, Router, debug_handler, extract::State, routing::get};
+use log::info;
 use shield_models::{Camera, RecordingMode, RecordingSettings};
 use tower_http::cors::{Any, CorsLayer};
 use unifi_protect_client::UnifiProtectClient;
@@ -12,6 +13,7 @@ mod credentials;
 
 #[tokio::main]
 async fn main() {
+    env_logger::init();
     let credentials = Credentials::load();
     let client_state = Arc::new(UnifiProtectClient::new(
         "https://192.168.1.1",
@@ -25,6 +27,7 @@ async fn main() {
         .layer(cors);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    info!("Listening on port 3000");
     axum::serve(listener, app).await.unwrap();
 }
 
@@ -32,6 +35,7 @@ async fn main() {
 async fn list_cameras(
     State(client): State<Arc<UnifiProtectClient>>,
 ) -> Result<Json<Vec<shield_models::Camera>>, AppError> {
+    info!("Fetching cameras");
     let tags = client.get_device_tags().await?;
     let cameras: Vec<Camera> = client
         .list_cameras()

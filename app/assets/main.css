@@ -90,3 +90,55 @@ body {
 .icon-button > i {
     height: 24px;
 }
+
+.modal-container {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background-color: rgba(0, 0, 0, 0.5);
+}
+
+.modal {
+    background: #383f52;
+    padding: 16px;
+    border-radius: 8px;
+}
+
+.modal-header {
+    font-weight: bold;
+}
+
+.modal-body {
+    padding: 16px 0;
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.secondary-button {
+    cursor: pointer;
+    background: none;
+    color: inherit;
+    border: 1px solid white;
+    border-radius: 4px;
+    padding: 8px;
+    font-weight: bold;
+}
+
+.primary-button {
+    cursor: pointer;
+    background: #b049ff;
+    color: white;
+    border: 1px solid #a837ff;
+    border-radius: 4px;
+    padding: 8px;
+    font-weight: bold;
+}

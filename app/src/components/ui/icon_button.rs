@@ -16,13 +16,14 @@ impl ButtonColor {
 }
 
 #[component]
-pub fn IconButton(icon: Element, color: Option<ButtonColor>) -> Element {
+pub fn IconButton(icon: Element, color: Option<ButtonColor>, on_press: Callback) -> Element {
     let (background_color, border_color) = color.unwrap_or(ButtonColor::Default).get_css_colors();
 
     rsx! {
         button {
             class: "icon-button",
             style: format!("background: {background_color}; border-color: {border_color};"),
+            onclick: move |_| on_press(()),
             {icon}
         }
     }

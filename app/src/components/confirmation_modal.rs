@@ -6,7 +6,11 @@ use crate::{
 };
 
 #[component]
-pub fn ConfirmationModal(confirmation_type: ConfirmationModalType, on_close: Callback) -> Element {
+pub fn ConfirmationModal(
+    confirmation_type: ConfirmationModalType,
+    on_close: Callback,
+    camera_names: Vec<String>,
+) -> Element {
     rsx! {
         Modal { on_close,
             ModalHeader { "Are you sure?" }
@@ -19,6 +23,18 @@ pub fn ConfirmationModal(confirmation_type: ConfirmationModalType, on_close: Cal
                         "This will disabled recording on the following cameras:"
                     }
                     _ => "",
+                }
+
+                ul {
+                    {
+                        camera_names
+                            .iter()
+                            .map(|name| {
+                                rsx! {
+                                    li { {name.clone()} }
+                                }
+                            })
+                    }
                 }
             }
             ModalFooter {

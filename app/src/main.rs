@@ -36,14 +36,17 @@ fn App() -> Element {
             .unwrap()
     }));
     let mut confirmation_modal_type = use_signal(|| ConfirmationModalType::None);
+    let mut selected_camera_ids: Signal<Vec<String>> = use_signal(|| vec![]);
     let cameras = cameras.cloned().unwrap_or_else(|| vec![]);
     let mut tag_groups: HashMap<String, Vec<&shield_models::Camera>> = HashMap::new();
     let mut untagged_cameras = vec![];
 
-    let handle_toggle_record_on = move || {
+    let mut handle_toggle_record_on = move |camera_ids: Vec<String>| {
+        selected_camera_ids.set(camera_ids);
         confirmation_modal_type.set(ConfirmationModalType::ConfirmToggleOn);
     };
-    let handle_toggle_record_off = move || {
+    let mut handle_toggle_record_off = move |camera_ids: Vec<String>| {
+        selected_camera_ids.set(camera_ids);
         confirmation_modal_type.set(ConfirmationModalType::ConfirmToggleOff);
     };
     let handle_toggle_untagged_cameras_record_on = move || {
@@ -83,13 +86,23 @@ fn App() -> Element {
             tags.iter()
                 .map(|tag| {
                     let cameras = tag_groups.get(tag).unwrap();
+                    let camera_ids: Vec<String> = cameras
+                        .iter()
+                        .map(|camera| camera.id.clone())
+                        .collect();
                     rsx! {
                         RowGroup {
                             label: tag,
                             actions: rsx! {
                                 GroupActions {
-                                    on_toggle_record_on: handle_toggle_record_on,
-                                    on_toggle_record_off: handle_toggle_record_off,
+                                    on_toggle_record_on: {
+                                        let camera_ids = camera_ids.clone();
+                                        move || handle_toggle_record_on(camera_ids.clone())
+                                    },
+                                    on_toggle_record_off: {
+                                        let camera_ids = camera_ids.clone();
+                                        move || handle_toggle_record_off(camera_ids.clone())
+                                    },
                                 }
                             },
                             {cameras.iter().map(|&camera| rsx! {
@@ -120,12 +133,32 @@ fn App() -> Element {
                 ConfirmationModal {
                     confirmation_type: ConfirmationModalType::ConfirmToggleOn,
                     on_close: handle_close_confirmation_modal,
+                    camera_names: selected_camera_ids()
+                        .iter()
+                        .flat_map(|id| {
+                            cameras
+                                .iter()
+                                .find_map(|camera| {
+                                    if &camera.id == id { Some(camera.name.clone()) } else { None }
+                                })
+                        })
+                        .collect(),
                 }
             },
             ConfirmationModalType::ConfirmToggleOff => rsx! {
                 ConfirmationModal {
                     confirmation_type: ConfirmationModalType::ConfirmToggleOff,
                     on_close: handle_close_confirmation_modal,
+                    camera_names: selected_camera_ids()
+                        .iter()
+                        .flat_map(|id| {
+                            cameras
+                                .iter()
+                                .find_map(|camera| {
+                                    if &camera.id == id { Some(camera.name.clone()) } else { None }
+                                })
+                        })
+                        .collect(),
                 }
             },
             ConfirmationModalType::None => rsx! {},

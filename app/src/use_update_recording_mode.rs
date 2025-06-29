@@ -15,11 +15,13 @@ pub fn use_update_recording_mode() -> impl Fn(Vec<String>, RecordingMode) {
                     mode,
                 })
                 .send()
-                .await
-                .unwrap();
+                .await;
 
-            if res.status().is_success() {
-                web_sys::window().unwrap().location().reload().unwrap();
+            match res {
+                Ok(res) if res.status().is_success() => {
+                    web_sys::window().unwrap().location().reload().unwrap()
+                }
+                _ => {}
             }
         });
     }

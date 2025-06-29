@@ -4,7 +4,7 @@ use shield_models::{RecordingMode, SetRecordingModeInput};
 use crate::get_api_url;
 
 pub fn use_update_recording_mode() -> impl Fn(Vec<String>, RecordingMode) {
-    let update_recording_mode = |ids, mode| {
+    |ids, mode| {
         let url = get_api_url("/set_recording_mode");
 
         spawn(async move {
@@ -22,7 +22,5 @@ pub fn use_update_recording_mode() -> impl Fn(Vec<String>, RecordingMode) {
                 web_sys::window().unwrap().location().reload().unwrap();
             }
         });
-    };
-
-    update_recording_mode
+    }
 }

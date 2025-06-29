@@ -42,8 +42,8 @@ fn App() -> Element {
     });
     let update_recording_mode = use_update_recording_mode();
     let mut confirmation_modal_type = use_signal(|| ConfirmationModalType::None);
-    let mut selected_camera_ids: Signal<Vec<String>> = use_signal(|| vec![]);
-    let cameras = cameras.cloned().unwrap_or_else(|| vec![]);
+    let mut selected_camera_ids: Signal<Vec<String>> = use_signal(Vec::new);
+    let cameras = cameras.cloned().unwrap_or_else(Vec::new);
     let mut tag_groups: HashMap<String, Vec<&shield_models::Camera>> = HashMap::new();
     let mut untagged_cameras = vec![];
 

@@ -2227,6 +2227,7 @@ dependencies = [
  "anyhow",
  "axum",
  "env_logger",
+ "futures",
  "log",
  "serde",
  "shield-models",

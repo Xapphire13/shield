@@ -5,6 +5,9 @@ use dioxus::prelude::*;
 use crate::components::{Camera, ConfirmationModal, GroupActions, ui::RowGroup};
 
 mod components;
+mod use_update_recording_mode;
+
+use use_update_recording_mode::use_update_recording_mode;
 
 const MAIN_CSS: Asset = asset!("/assets/main.css");
 
@@ -19,14 +22,16 @@ enum ConfirmationModalType {
     None,
 }
 
+fn get_api_url(path: &str) -> String {
+    let hostname = web_sys::window().unwrap().location().hostname().unwrap();
+
+    format!("http://{hostname}:3000{path}")
+}
+
 #[component]
 fn App() -> Element {
-    let host = use_hook(|| {
-        let hostname = web_sys::window().unwrap().location().hostname().unwrap();
-        format!("http://{hostname}:3000")
-    });
-    let cameras = use_resource(use_reactive!(|(host)| async move {
-        let url = format!("{}/cameras", host);
+    let cameras = use_resource(|| async move {
+        let url = get_api_url("/cameras");
 
         reqwest::get(url)
             .await
@@ -34,7 +39,8 @@ fn App() -> Element {
             .json::<Vec<shield_models::Camera>>()
             .await
             .unwrap()
-    }));
+    });
+    let update_recording_mode = use_update_recording_mode();
     let mut confirmation_modal_type = use_signal(|| ConfirmationModalType::None);
     let mut selected_camera_ids: Signal<Vec<String>> = use_signal(|| vec![]);
     let cameras = cameras.cloned().unwrap_or_else(|| vec![]);
@@ -49,13 +55,7 @@ fn App() -> Element {
         selected_camera_ids.set(camera_ids);
         confirmation_modal_type.set(ConfirmationModalType::ConfirmToggleOff);
     };
-    let handle_toggle_untagged_cameras_record_on = move || {
-        confirmation_modal_type.set(ConfirmationModalType::ConfirmToggleOn);
-    };
-    let handle_toggle_untagged_cameras_record_off = move || {
-        confirmation_modal_type.set(ConfirmationModalType::ConfirmToggleOff);
-    };
-    let handle_close_confirmation_modal = move || {
+    let mut handle_close_confirmation_modal = move || {
         confirmation_modal_type.set(ConfirmationModalType::None);
     };
 
@@ -118,8 +118,20 @@ fn App() -> Element {
                 label: "Untagged",
                 actions: rsx! {
                     GroupActions {
-                        on_toggle_record_on: handle_toggle_untagged_cameras_record_on,
-                        on_toggle_record_off: handle_toggle_untagged_cameras_record_off,
+                        on_toggle_record_on: {
+                            let camera_ids = untagged_cameras
+                                .iter()
+                                .map(|&camera| camera.id.clone())
+                                .collect::<Vec<_>>();
+                            move || handle_toggle_record_on(camera_ids.clone())
+                        },
+                        on_toggle_record_off: {
+                            let camera_ids = untagged_cameras
+                                .iter()
+                                .map(|&camera| camera.id.clone())
+                                .collect::<Vec<_>>();
+                            move || handle_toggle_record_off(camera_ids.clone())
+                        },
                     }
                 },
                 {untagged_cameras.iter().map(|&camera| rsx! {
@@ -133,6 +145,13 @@ fn App() -> Element {
                 ConfirmationModal {
                     confirmation_type: ConfirmationModalType::ConfirmToggleOn,
                     on_close: handle_close_confirmation_modal,
+                    on_confirm: move || {
+                        update_recording_mode(
+                            selected_camera_ids(),
+                            shield_models::RecordingMode::Always,
+                        );
+                        handle_close_confirmation_modal();
+                    },
                     camera_names: selected_camera_ids()
                         .iter()
                         .flat_map(|id| {
@@ -149,6 +168,13 @@ fn App() -> Element {
                 ConfirmationModal {
                     confirmation_type: ConfirmationModalType::ConfirmToggleOff,
                     on_close: handle_close_confirmation_modal,
+                    on_confirm: move || {
+                        update_recording_mode(
+                            selected_camera_ids(),
+                            shield_models::RecordingMode::Never,
+                        );
+                        handle_close_confirmation_modal();
+                    },
                     camera_names: selected_camera_ids()
                         .iter()
                         .flat_map(|id| {

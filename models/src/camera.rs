@@ -16,7 +16,7 @@ pub struct RecordingSettings {
     pub mode: RecordingMode,
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub enum RecordingMode {
     Always,

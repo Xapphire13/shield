@@ -9,6 +9,7 @@ use crate::{
 pub fn ConfirmationModal(
     confirmation_type: ConfirmationModalType,
     on_close: Callback,
+    on_confirm: Callback,
     camera_names: Vec<String>,
 ) -> Element {
     rsx! {
@@ -39,7 +40,7 @@ pub fn ConfirmationModal(
             }
             ModalFooter {
                 SecondaryButton { on_press: on_close, "Cancel" }
-                PrimaryButton { "Confirm" }
+                PrimaryButton { on_press: on_confirm, "Confirm" }
             }
         }
     }

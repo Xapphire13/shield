@@ -42,7 +42,7 @@ impl JwtConfig {
         JwtConfig {
             secret: rand::rng()
                 .sample_iter(Alphanumeric)
-                .take(20)
+                .take(32) // 256-bit secret
                 .map(char::from)
                 .collect(),
         }

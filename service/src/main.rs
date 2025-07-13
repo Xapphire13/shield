@@ -1,45 +1,27 @@
 use std::sync::Arc;
 
-use anyhow::anyhow;
-use axum::{
-    Json, Router, debug_handler,
-    extract::State,
-    http::{Request, Response, StatusCode, Uri, header::CONTENT_TYPE},
-    routing::{get, post},
-};
-use chrono::{Days, Utc};
-use futures::future::join_all;
-use jsonwebtoken::{EncodingKey, Header};
-use serde::Serialize;
-use shield_models::{
-    AuthenticateRequest, AuthenticationResponse, Camera, RecordingMode, RecordingSettings,
-    SetRecordingModeRequest,
-};
-use totp_rs::{Algorithm, Secret, TOTP};
+use axum::http::{Request, Response, header::CONTENT_TYPE};
 use tower_http::{
     cors::{Any, CorsLayer},
     trace::TraceLayer,
 };
-use tracing::{Level, error, info, trace};
+use tracing::{Level, info, trace};
 use tracing_subscriber::{filter, layer::SubscriberExt, util::SubscriberInitExt};
-use unifi_protect_client::{
-    UnifiProtectClient,
-    models::camera::{CameraUpdateBuilder, RecordingSettingsUpdateBuilder},
-};
+use unifi_protect_client::UnifiProtectClient;
 
-use crate::{
-    app_error::AppError,
-    config::{Config, JwtConfig, OtpConfig},
-};
+use crate::config::Config;
 
 mod app_error;
 mod config;
+mod routes;
 
 #[derive(Clone)]
 struct AppState {
     client: Arc<UnifiProtectClient>,
     config: Arc<Config>,
 }
+
+const PORT: i32 = 3000;
 
 #[tokio::main]
 async fn main() {
@@ -49,19 +31,7 @@ async fn main() {
         .with(filter)
         .init();
 
-    let mut config = Config::load();
-
-    if config.otp.is_none() {
-        info!("OTP not configured, generating new secret");
-        config.otp = Some(OtpConfig::new());
-        config.save().expect("Couldn't update config file");
-    }
-
-    if config.jwt.is_none() {
-        info!("JWT not configured, generating new secret");
-        config.jwt = Some(JwtConfig::new());
-        config.save().expect("Couldn't update config file");
-    }
+    let config = Config::load();
 
     let app_state = AppState {
         client: Arc::new(UnifiProtectClient::new(
@@ -71,16 +41,14 @@ async fn main() {
         )),
         config: Arc::new(config),
     };
-    let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_headers([CONTENT_TYPE]);
-    let app = Router::new()
-        .route("/cameras", get(list_cameras))
-        .route("/set_recording_mode", post(set_recording_mode))
-        .route("/authenticate", post(authenticate))
-        .fallback(fallback)
+
+    let app = routes::create_routes()
         .with_state(app_state)
-        .layer(cors)
+        .layer(
+            CorsLayer::new()
+                .allow_origin(Any)
+                .allow_headers([CONTENT_TYPE]),
+        )
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(|request: &Request<_>| {
@@ -106,158 +74,9 @@ async fn main() {
                 ),
         );
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
-    info!("Listening on port 3000");
+    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{PORT}"))
+        .await
+        .unwrap();
+    info!("Listening on port {PORT}");
     axum::serve(listener, app).await.unwrap();
-}
-
-#[debug_handler]
-async fn list_cameras(
-    State(AppState { client, .. }): State<AppState>,
-) -> Result<Json<Vec<shield_models::Camera>>, AppError> {
-    info!("Fetching cameras");
-
-    let tags = client.get_device_tags().await?;
-    let cameras: Vec<Camera> = client
-        .list_cameras()
-        .await?
-        .into_iter()
-        .map(|camera| {
-            let tags = tags
-                .iter()
-                .filter_map(|tag| {
-                    if tag.device_macs.contains(&camera.mac) {
-                        Some(tag.name.clone())
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-
-            Camera {
-                id: camera.id,
-                name: camera.name,
-                recording_settings: RecordingSettings {
-                    mode: match camera.recording_settings.mode {
-                        unifi_protect_client::models::camera::RecordingMode::Always => {
-                            RecordingMode::Always
-                        }
-                        unifi_protect_client::models::camera::RecordingMode::Schedule => {
-                            RecordingMode::Schedule
-                        }
-                        unifi_protect_client::models::camera::RecordingMode::Never => {
-                            RecordingMode::Never
-                        }
-                    },
-                },
-                is_recording: camera.is_recording,
-                tags,
-            }
-        })
-        .collect();
-
-    Ok(Json(cameras))
-}
-
-async fn set_recording_mode(
-    State(AppState { client, .. }): State<AppState>,
-    Json(input): Json<SetRecordingModeRequest>,
-) -> Result<StatusCode, AppError> {
-    info!(
-        "Setting recording mode to {:?} for cameras: {:?}",
-        input.mode, input.camera_ids
-    );
-
-    let futures = input.camera_ids.iter().map(|camera_id| {
-        client.update_camera(
-            camera_id,
-            CameraUpdateBuilder::new()
-                .with_recording_settings(
-                    RecordingSettingsUpdateBuilder::new()
-                        .with_mode(match input.mode {
-                            RecordingMode::Always => {
-                                unifi_protect_client::models::camera::RecordingMode::Always
-                            }
-                            RecordingMode::Schedule => {
-                                unifi_protect_client::models::camera::RecordingMode::Schedule
-                            }
-                            RecordingMode::Never => {
-                                unifi_protect_client::models::camera::RecordingMode::Never
-                            }
-                        })
-                        .build(),
-                )
-                .build(),
-        )
-    });
-
-    let results = join_all(futures).await;
-
-    for (i, result) in results.iter().enumerate() {
-        if result.is_err() {
-            Err(anyhow!(
-                "Issue updating camera {}",
-                input.camera_ids.get(i).unwrap()
-            ))?;
-        }
-    }
-
-    Ok(StatusCode::OK)
-}
-
-async fn fallback(uri: Uri) -> (StatusCode, String) {
-    error!("No route for {uri}");
-    (StatusCode::NOT_FOUND, format!("No route for {uri}"))
-}
-
-#[derive(Serialize)]
-struct JwtClaims {
-    exp: usize,
-}
-
-#[debug_handler]
-async fn authenticate(
-    State(AppState { config, .. }): State<AppState>,
-    Json(input): Json<AuthenticateRequest>,
-) -> Result<Json<AuthenticationResponse>, AppError> {
-    let totp = TOTP::new(
-        Algorithm::SHA1,
-        6,
-        1,
-        30,
-        Secret::Encoded(
-            config
-                .otp
-                .as_ref()
-                .ok_or(anyhow!("Couldn't get OTP secret"))?
-                .secret
-                .clone(),
-        )
-        .to_bytes()?,
-    )?;
-
-    if !totp.check_current(&input.otp_code)? {
-        Err(anyhow!("Invalid OTP code"))?;
-    }
-
-    let exp = Utc::now()
-        .checked_add_days(Days::new(30))
-        .ok_or(anyhow!("Couldn't calculate JWT expiry"))?;
-
-    let token = jsonwebtoken::encode(
-        &Header::default(),
-        &JwtClaims {
-            exp: exp.timestamp() as usize,
-        },
-        &EncodingKey::from_secret(
-            config
-                .jwt
-                .as_ref()
-                .ok_or(anyhow!("Couldn't get JWT secret"))?
-                .secret
-                .as_ref(),
-        ),
-    )?;
-
-    Ok(Json(AuthenticationResponse { token }))
 }

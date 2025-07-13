@@ -4,6 +4,7 @@ use anyhow::Result;
 use rand::{Rng, distr::Alphanumeric};
 use serde::{Deserialize, Serialize};
 use totp_rs::Secret;
+use tracing::info;
 
 #[derive(Deserialize, Serialize)]
 pub struct Config {
@@ -75,10 +76,25 @@ impl Config {
         let credentials_file = fs::read_to_string(config_path)
             .expect("Couldn't find shield.config.toml in home directory");
 
-        toml::from_str(&credentials_file).expect("Couldn't deserialize shield.config.toml")
+        let mut config: Config =
+            toml::from_str(&credentials_file).expect("Couldn't deserialize shield.config.toml");
+
+        if config.otp.is_none() {
+            info!("OTP not configured, generating new secret");
+            config.otp = Some(OtpConfig::new());
+            config.save().expect("Couldn't update config file");
+        }
+
+        if config.jwt.is_none() {
+            info!("JWT not configured, generating new secret");
+            config.jwt = Some(JwtConfig::new());
+            config.save().expect("Couldn't update config file");
+        }
+
+        config
     }
 
-    pub fn save(&self) -> Result<()> {
+    pub fn save(&mut self) -> Result<()> {
         let config_path = get_config_path();
         fs::write(config_path, toml::to_string_pretty(self)?)?;
 

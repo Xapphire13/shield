@@ -20,7 +20,10 @@ use unifi_protect_client::{
     models::camera::{CameraUpdateBuilder, RecordingSettingsUpdateBuilder},
 };
 
-use crate::{app_error::AppError, config::Config};
+use crate::{
+    app_error::AppError,
+    config::{Config, OtpConfig},
+};
 
 mod app_error;
 mod config;
@@ -33,7 +36,14 @@ async fn main() {
         .with(filter)
         .init();
 
-    let config = Config::load();
+    let mut config = Config::load();
+
+    if config.otp.is_none() {
+        info!("OTP not configured, generating new secret");
+        config.otp = Some(OtpConfig::new());
+        config.save().expect("Couldn't update config file");
+    }
+
     let client_state = Arc::new(UnifiProtectClient::new(
         "https://192.168.1.1",
         &config.credentials.username,
@@ -50,7 +60,7 @@ async fn main() {
         .layer(cors)
         .layer(
             TraceLayer::new_for_http()
-                .make_span_with(|request: &axum::http::Request<_>| {
+                .make_span_with(|request: &Request<_>| {
                     tracing::info_span!(
                         "http_request",
                         method = %request.method(),

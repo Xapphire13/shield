@@ -1,16 +1,33 @@
 use std::{fs, path::PathBuf};
 
-use serde::Deserialize;
+use anyhow::Result;
+use serde::{Deserialize, Serialize};
+use totp_rs::Secret;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 pub struct Config {
-    pub credentials: Credentials,
+    pub credentials: CredentialsConfig,
+    pub otp: Option<OtpConfig>,
 }
 
-#[derive(Deserialize)]
-pub struct Credentials {
+#[derive(Deserialize, Serialize)]
+pub struct CredentialsConfig {
     pub username: String,
     pub password: String,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct OtpConfig {
+    secret: String,
+}
+
+impl OtpConfig {
+    pub fn new() -> OtpConfig {
+        let secret = Secret::generate_secret();
+        OtpConfig {
+            secret: secret.to_encoded().to_string(),
+        }
+    }
 }
 
 #[cfg(debug_assertions)]
@@ -40,5 +57,12 @@ impl Config {
             .expect("Couldn't find shield.config.toml in home directory");
 
         toml::from_str(&credentials_file).expect("Couldn't deserialize shield.config.toml")
+    }
+
+    pub fn save(&self) -> Result<()> {
+        let config_path = get_config_path();
+        fs::write(config_path, toml::to_string_pretty(self)?)?;
+
+        Ok(())
     }
 }

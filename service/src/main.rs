@@ -4,13 +4,17 @@ use anyhow::anyhow;
 use axum::{
     Json, Router, debug_handler,
     extract::State,
-    http::{StatusCode, Uri, header::CONTENT_TYPE},
+    http::{Request, Response, StatusCode, Uri, header::CONTENT_TYPE},
     routing::{get, post},
 };
 use futures::future::join_all;
-use log::{error, info};
 use shield_models::{Camera, RecordingMode, RecordingSettings, SetRecordingModeInput};
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::{
+    cors::{Any, CorsLayer},
+    trace::TraceLayer,
+};
+use tracing::{Level, error, info, trace};
+use tracing_subscriber::{filter, layer::SubscriberExt, util::SubscriberInitExt};
 use unifi_protect_client::{
     UnifiProtectClient,
     models::camera::{CameraUpdateBuilder, RecordingSettingsUpdateBuilder},
@@ -23,7 +27,12 @@ mod config;
 
 #[tokio::main]
 async fn main() {
-    env_logger::init();
+    let filter = filter::Targets::new().with_target("shield_service", Level::TRACE);
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::fmt::layer())
+        .with(filter)
+        .init();
+
     let config = Config::load();
     let client_state = Arc::new(UnifiProtectClient::new(
         "https://192.168.1.1",
@@ -38,7 +47,31 @@ async fn main() {
         .route("/set_recording_mode", post(set_recording_mode))
         .fallback(fallback)
         .with_state(client_state)
-        .layer(cors);
+        .layer(cors)
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(|request: &axum::http::Request<_>| {
+                    tracing::info_span!(
+                        "http_request",
+                        method = %request.method(),
+                        uri = %request.uri(),
+                    )
+                })
+                .on_request(|_request: &Request<_>, _span: &tracing::Span| {
+                    trace!("request started");
+                })
+                .on_response(
+                    |response: &Response<_>,
+                     latency: std::time::Duration,
+                     _span: &tracing::Span| {
+                        trace!(
+                            status = response.status().as_u16(),
+                            latency_ms = latency.as_millis(),
+                            "request completed"
+                        );
+                    },
+                ),
+        );
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
     info!("Listening on port 3000");
@@ -50,6 +83,7 @@ async fn list_cameras(
     State(client): State<Arc<UnifiProtectClient>>,
 ) -> Result<Json<Vec<shield_models::Camera>>, AppError> {
     info!("Fetching cameras");
+
     let tags = client.get_device_tags().await?;
     let cameras: Vec<Camera> = client
         .list_cameras()

@@ -1,5 +1,5 @@
 use dioxus::prelude::*;
-use shield_models::{RecordingMode, SetRecordingModeInput};
+use shield_models::{RecordingMode, SetRecordingModeRequest};
 
 use crate::get_api_url;
 
@@ -10,7 +10,7 @@ pub fn use_update_recording_mode() -> impl Fn(Vec<String>, RecordingMode) {
         spawn(async move {
             let res = reqwest::Client::new()
                 .post(url)
-                .json(&SetRecordingModeInput {
+                .json(&SetRecordingModeRequest {
                     camera_ids: ids,
                     mode,
                 })

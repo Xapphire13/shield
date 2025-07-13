@@ -12,8 +12,8 @@ use futures::future::join_all;
 use jsonwebtoken::{EncodingKey, Header};
 use serde::Serialize;
 use shield_models::{
-    AuthenticateInput, AuthenticationResult, Camera, RecordingMode, RecordingSettings,
-    SetRecordingModeInput,
+    AuthenticateRequest, AuthenticationResponse, Camera, RecordingMode, RecordingSettings,
+    SetRecordingModeRequest,
 };
 use totp_rs::{Algorithm, Secret, TOTP};
 use tower_http::{
@@ -161,7 +161,7 @@ async fn list_cameras(
 
 async fn set_recording_mode(
     State(AppState { client, .. }): State<AppState>,
-    Json(input): Json<SetRecordingModeInput>,
+    Json(input): Json<SetRecordingModeRequest>,
 ) -> Result<StatusCode, AppError> {
     info!(
         "Setting recording mode to {:?} for cameras: {:?}",
@@ -218,8 +218,8 @@ struct JwtClaims {
 #[debug_handler]
 async fn authenticate(
     State(AppState { config, .. }): State<AppState>,
-    Json(input): Json<AuthenticateInput>,
-) -> Result<Json<AuthenticationResult>, AppError> {
+    Json(input): Json<AuthenticateRequest>,
+) -> Result<Json<AuthenticationResponse>, AppError> {
     let totp = TOTP::new(
         Algorithm::SHA1,
         6,
@@ -259,5 +259,5 @@ async fn authenticate(
         ),
     )?;
 
-    Ok(Json(AuthenticationResult { token }))
+    Ok(Json(AuthenticationResponse { token }))
 }

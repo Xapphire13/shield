@@ -16,19 +16,19 @@ use unifi_protect_client::{
     models::camera::{CameraUpdateBuilder, RecordingSettingsUpdateBuilder},
 };
 
-use crate::{app_error::AppError, credentials::Credentials};
+use crate::{app_error::AppError, config::Config};
 
 mod app_error;
-mod credentials;
+mod config;
 
 #[tokio::main]
 async fn main() {
     env_logger::init();
-    let credentials = Credentials::load();
+    let config = Config::load();
     let client_state = Arc::new(UnifiProtectClient::new(
         "https://192.168.1.1",
-        &credentials.username,
-        &credentials.password,
+        &config.credentials.username,
+        &config.credentials.password,
     ));
     let cors = CorsLayer::new()
         .allow_origin(Any)

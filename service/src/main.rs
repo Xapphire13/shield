@@ -7,8 +7,15 @@ use axum::{
     http::{Request, Response, StatusCode, Uri, header::CONTENT_TYPE},
     routing::{get, post},
 };
+use chrono::{Days, Utc};
 use futures::future::join_all;
-use shield_models::{Camera, RecordingMode, RecordingSettings, SetRecordingModeInput};
+use jsonwebtoken::{EncodingKey, Header};
+use serde::Serialize;
+use shield_models::{
+    AuthenticateInput, AuthenticationResult, Camera, RecordingMode, RecordingSettings,
+    SetRecordingModeInput,
+};
+use totp_rs::{Algorithm, Secret, TOTP};
 use tower_http::{
     cors::{Any, CorsLayer},
     trace::TraceLayer,
@@ -22,11 +29,17 @@ use unifi_protect_client::{
 
 use crate::{
     app_error::AppError,
-    config::{Config, OtpConfig},
+    config::{Config, JwtConfig, OtpConfig},
 };
 
 mod app_error;
 mod config;
+
+#[derive(Clone)]
+struct AppState {
+    client: Arc<UnifiProtectClient>,
+    config: Arc<Config>,
+}
 
 #[tokio::main]
 async fn main() {
@@ -44,19 +57,29 @@ async fn main() {
         config.save().expect("Couldn't update config file");
     }
 
-    let client_state = Arc::new(UnifiProtectClient::new(
-        "https://192.168.1.1",
-        &config.credentials.username,
-        &config.credentials.password,
-    ));
+    if config.jwt.is_none() {
+        info!("JWT not configured, generating new secret");
+        config.jwt = Some(JwtConfig::new());
+        config.save().expect("Couldn't update config file");
+    }
+
+    let app_state = AppState {
+        client: Arc::new(UnifiProtectClient::new(
+            "https://192.168.1.1",
+            &config.credentials.username,
+            &config.credentials.password,
+        )),
+        config: Arc::new(config),
+    };
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_headers([CONTENT_TYPE]);
     let app = Router::new()
         .route("/cameras", get(list_cameras))
         .route("/set_recording_mode", post(set_recording_mode))
+        .route("/authenticate", post(authenticate))
         .fallback(fallback)
-        .with_state(client_state)
+        .with_state(app_state)
         .layer(cors)
         .layer(
             TraceLayer::new_for_http()
@@ -90,7 +113,7 @@ async fn main() {
 
 #[debug_handler]
 async fn list_cameras(
-    State(client): State<Arc<UnifiProtectClient>>,
+    State(AppState { client, .. }): State<AppState>,
 ) -> Result<Json<Vec<shield_models::Camera>>, AppError> {
     info!("Fetching cameras");
 
@@ -137,21 +160,21 @@ async fn list_cameras(
 }
 
 async fn set_recording_mode(
-    State(client): State<Arc<UnifiProtectClient>>,
-    Json(payload): Json<SetRecordingModeInput>,
+    State(AppState { client, .. }): State<AppState>,
+    Json(input): Json<SetRecordingModeInput>,
 ) -> Result<StatusCode, AppError> {
     info!(
         "Setting recording mode to {:?} for cameras: {:?}",
-        payload.mode, payload.camera_ids
+        input.mode, input.camera_ids
     );
 
-    let futures = payload.camera_ids.iter().map(|camera_id| {
+    let futures = input.camera_ids.iter().map(|camera_id| {
         client.update_camera(
             camera_id,
             CameraUpdateBuilder::new()
                 .with_recording_settings(
                     RecordingSettingsUpdateBuilder::new()
-                        .with_mode(match payload.mode {
+                        .with_mode(match input.mode {
                             RecordingMode::Always => {
                                 unifi_protect_client::models::camera::RecordingMode::Always
                             }
@@ -174,7 +197,7 @@ async fn set_recording_mode(
         if result.is_err() {
             Err(anyhow!(
                 "Issue updating camera {}",
-                payload.camera_ids.get(i).unwrap()
+                input.camera_ids.get(i).unwrap()
             ))?;
         }
     }
@@ -185,4 +208,56 @@ async fn set_recording_mode(
 async fn fallback(uri: Uri) -> (StatusCode, String) {
     error!("No route for {uri}");
     (StatusCode::NOT_FOUND, format!("No route for {uri}"))
+}
+
+#[derive(Serialize)]
+struct JwtClaims {
+    exp: usize,
+}
+
+#[debug_handler]
+async fn authenticate(
+    State(AppState { config, .. }): State<AppState>,
+    Json(input): Json<AuthenticateInput>,
+) -> Result<Json<AuthenticationResult>, AppError> {
+    let totp = TOTP::new(
+        Algorithm::SHA1,
+        6,
+        1,
+        30,
+        Secret::Encoded(
+            config
+                .otp
+                .as_ref()
+                .ok_or(anyhow!("Couldn't get OTP secret"))?
+                .secret
+                .clone(),
+        )
+        .to_bytes()?,
+    )?;
+
+    if !totp.check_current(&input.otp_code)? {
+        Err(anyhow!("Invalid OTP code"))?;
+    }
+
+    let exp = Utc::now()
+        .checked_add_days(Days::new(30))
+        .ok_or(anyhow!("Couldn't calculate JWT expiry"))?;
+
+    let token = jsonwebtoken::encode(
+        &Header::default(),
+        &JwtClaims {
+            exp: exp.timestamp() as usize,
+        },
+        &EncodingKey::from_secret(
+            config
+                .jwt
+                .as_ref()
+                .ok_or(anyhow!("Couldn't get JWT secret"))?
+                .secret
+                .as_ref(),
+        ),
+    )?;
+
+    Ok(Json(AuthenticationResult { token }))
 }

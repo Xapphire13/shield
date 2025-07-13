@@ -1,6 +1,7 @@
 use std::{fs, path::PathBuf};
 
 use anyhow::Result;
+use rand::{Rng, distr::Alphanumeric};
 use serde::{Deserialize, Serialize};
 use totp_rs::Secret;
 
@@ -8,6 +9,7 @@ use totp_rs::Secret;
 pub struct Config {
     pub credentials: CredentialsConfig,
     pub otp: Option<OtpConfig>,
+    pub jwt: Option<JwtConfig>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -18,7 +20,12 @@ pub struct CredentialsConfig {
 
 #[derive(Deserialize, Serialize)]
 pub struct OtpConfig {
-    secret: String,
+    pub secret: String,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct JwtConfig {
+    pub secret: String,
 }
 
 impl OtpConfig {
@@ -26,6 +33,18 @@ impl OtpConfig {
         let secret = Secret::generate_secret();
         OtpConfig {
             secret: secret.to_encoded().to_string(),
+        }
+    }
+}
+
+impl JwtConfig {
+    pub fn new() -> JwtConfig {
+        JwtConfig {
+            secret: rand::rng()
+                .sample_iter(Alphanumeric)
+                .take(20)
+                .map(char::from)
+                .collect(),
         }
     }
 }

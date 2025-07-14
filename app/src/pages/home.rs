@@ -59,114 +59,114 @@ pub fn Home() -> Element {
     };
 
     rsx! {
-        {
-            tags.iter()
-                .map(|tag| {
-                    let cameras = tag_groups.get(tag).unwrap();
-                    let camera_ids: Vec<String> = cameras
-                        .iter()
-                        .map(|camera| camera.id.clone())
-                        .collect();
-                    rsx! {
-                        RowGroup {
-                            label: tag,
-                            actions: rsx! {
-                                GroupActions {
-                                    on_toggle_record_on: {
-                                        let camera_ids = camera_ids.clone();
-                                        move || handle_toggle_record_on(camera_ids.clone())
-                                    },
-                                    on_toggle_record_off: {
-                                        let camera_ids = camera_ids.clone();
-                                        move || handle_toggle_record_off(camera_ids.clone())
-                                    },
-                                }
-                            },
-                            {cameras.iter().map(|&camera| rsx! {
-                                Camera { camera: camera.clone() }
-                            })}
+        div { class: "home-container",
+            {
+                tags.iter()
+                    .map(|tag| {
+                        let cameras = tag_groups.get(tag).unwrap();
+                        let camera_ids: Vec<String> = cameras
+                            .iter()
+                            .map(|camera| camera.id.clone())
+                            .collect();
+                        rsx! {
+                            RowGroup {
+                                label: tag,
+                                actions: rsx! {
+                                    GroupActions {
+                                        on_toggle_record_on: {
+                                            let camera_ids = camera_ids.clone();
+                                            move || handle_toggle_record_on(camera_ids.clone())
+                                        },
+                                        on_toggle_record_off: {
+                                            let camera_ids = camera_ids.clone();
+                                            move || handle_toggle_record_off(camera_ids.clone())
+                                        },
+                                    }
+                                },
+                                {cameras.iter().map(|&camera| rsx! {
+                                    Camera { camera: camera.clone() }
+                                })}
+                            }
                         }
-                    }
-                })
-        }
+                    })
+            }
 
-        if !untagged_cameras.is_empty() {
-            RowGroup {
-                label: "Untagged",
-                actions: rsx! {
-                    GroupActions {
-                        on_toggle_record_on: {
-                            let camera_ids = untagged_cameras
-                                .iter()
-                                .map(|&camera| camera.id.clone())
-                                .collect::<Vec<_>>();
-                            move || handle_toggle_record_on(camera_ids.clone())
+            if !untagged_cameras.is_empty() {
+                RowGroup {
+                    label: "Untagged",
+                    actions: rsx! {
+                        GroupActions {
+                            on_toggle_record_on: {
+                                let camera_ids = untagged_cameras
+                                    .iter()
+                                    .map(|&camera| camera.id.clone())
+                                    .collect::<Vec<_>>();
+                                move || handle_toggle_record_on(camera_ids.clone())
+                            },
+                            on_toggle_record_off: {
+                                let camera_ids = untagged_cameras
+                                    .iter()
+                                    .map(|&camera| camera.id.clone())
+                                    .collect::<Vec<_>>();
+                                move || handle_toggle_record_off(camera_ids.clone())
+                            },
+                        }
+                    },
+                    {untagged_cameras.iter().map(|&camera| rsx! {
+                        Camera { camera: camera.clone() }
+                    })}
+                }
+            }
+
+            match confirmation_modal_type() {
+                ConfirmationModalType::ConfirmToggleOn => rsx! {
+                    ConfirmationModal {
+                        confirmation_type: ConfirmationModalType::ConfirmToggleOn,
+                        on_close: handle_close_confirmation_modal,
+                        on_confirm: move || {
+                            update_recording_mode(
+                                selected_camera_ids(),
+                                shield_models::RecordingMode::Always,
+                            );
+                            handle_close_confirmation_modal();
                         },
-                        on_toggle_record_off: {
-                            let camera_ids = untagged_cameras
-                                .iter()
-                                .map(|&camera| camera.id.clone())
-                                .collect::<Vec<_>>();
-                            move || handle_toggle_record_off(camera_ids.clone())
-                        },
+                        camera_names: selected_camera_ids()
+                            .iter()
+                            .flat_map(|id| {
+                                cameras
+                                    .iter()
+                                    .find_map(|camera| {
+                                        if &camera.id == id { Some(camera.name.clone()) } else { None }
+                                    })
+                            })
+                            .collect(),
                     }
                 },
-                {untagged_cameras.iter().map(|&camera| rsx! {
-                    Camera { camera: camera.clone() }
-                })}
+                ConfirmationModalType::ConfirmToggleOff => rsx! {
+                    ConfirmationModal {
+                        confirmation_type: ConfirmationModalType::ConfirmToggleOff,
+                        on_close: handle_close_confirmation_modal,
+                        on_confirm: move || {
+                            update_recording_mode(
+                                selected_camera_ids(),
+                                shield_models::RecordingMode::Never,
+                            );
+                            handle_close_confirmation_modal();
+                        },
+                        camera_names: selected_camera_ids()
+                            .iter()
+                            .flat_map(|id| {
+                                cameras
+                                    .iter()
+                                    .find_map(|camera| {
+                                        if &camera.id == id { Some(camera.name.clone()) } else { None }
+                                    })
+                            })
+                            .collect(),
+                    }
+                },
+                ConfirmationModalType::None => rsx! {},
             }
         }
-
-        match confirmation_modal_type() {
-            ConfirmationModalType::ConfirmToggleOn => rsx! {
-                ConfirmationModal {
-                    confirmation_type: ConfirmationModalType::ConfirmToggleOn,
-                    on_close: handle_close_confirmation_modal,
-                    on_confirm: move || {
-                        update_recording_mode(
-                            selected_camera_ids(),
-                            shield_models::RecordingMode::Always,
-                        );
-                        handle_close_confirmation_modal();
-                    },
-                    camera_names: selected_camera_ids()
-                        .iter()
-                        .flat_map(|id| {
-                            cameras
-                                .iter()
-                                .find_map(|camera| {
-                                    if &camera.id == id { Some(camera.name.clone()) } else { None }
-                                })
-                        })
-                        .collect(),
-                }
-            },
-            ConfirmationModalType::ConfirmToggleOff => rsx! {
-                ConfirmationModal {
-                    confirmation_type: ConfirmationModalType::ConfirmToggleOff,
-                    on_close: handle_close_confirmation_modal,
-                    on_confirm: move || {
-                        update_recording_mode(
-                            selected_camera_ids(),
-                            shield_models::RecordingMode::Never,
-                        );
-                        handle_close_confirmation_modal();
-                    },
-                    camera_names: selected_camera_ids()
-                        .iter()
-                        .flat_map(|id| {
-                            cameras
-                                .iter()
-                                .find_map(|camera| {
-                                    if &camera.id == id { Some(camera.name.clone()) } else { None }
-                                })
-                        })
-                        .collect(),
-                }
-            },
-            ConfirmationModalType::None => rsx! {},
-        }
-
-        {dioxus_feather_icons::sprite!()}
     }
 }

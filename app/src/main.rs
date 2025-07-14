@@ -28,6 +28,8 @@ fn App() -> Element {
         document::Link { rel: "stylesheet", href: MAIN_CSS }
 
         Router::<Route> {}
+
+        {dioxus_feather_icons::sprite!()}
     }
 }
 

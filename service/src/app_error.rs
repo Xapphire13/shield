@@ -1,20 +1,39 @@
 use axum::{
+    Json,
     http::StatusCode,
     response::{IntoResponse, Response},
 };
+use serde_json::json;
 use tracing::error;
 
-pub struct AppError(anyhow::Error);
+pub enum AppError {
+    InvalidToken,
+    ExpiredToken,
+    Unknown(anyhow::Error),
+}
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
-        error!("{}", self.0);
+        let (status, error_message) = match &self {
+            AppError::InvalidToken => (StatusCode::UNAUTHORIZED, "Invalid token"),
+            AppError::ExpiredToken => (StatusCode::UNAUTHORIZED, "Expired token"),
+            AppError::Unknown(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error!"),
+        };
 
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Something went wrong: {}", self.0),
-        )
-            .into_response()
+        match &self {
+            AppError::Unknown(error) => {
+                error!("{error}");
+            }
+            _ => {
+                error!("{error_message}");
+            }
+        }
+
+        let body = Json(json!({
+            "error": error_message,
+        }));
+
+        (status, body).into_response()
     }
 }
 
@@ -23,6 +42,6 @@ where
     E: Into<anyhow::Error>,
 {
     fn from(err: E) -> Self {
-        Self(err.into())
+        Self::Unknown(err.into())
     }
 }

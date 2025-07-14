@@ -1,9 +1,15 @@
 use dioxus::prelude::*;
 
-use crate::{
-    ConfirmationModalType,
-    components::ui::{Modal, ModalBody, ModalFooter, ModalHeader, PrimaryButton, SecondaryButton},
+use crate::components::ui::{
+    Modal, ModalBody, ModalFooter, ModalHeader, PrimaryButton, SecondaryButton,
 };
+
+#[derive(Clone, PartialEq)]
+pub enum ConfirmationModalType {
+    ConfirmToggleOn,
+    ConfirmToggleOff,
+    None,
+}
 
 #[component]
 pub fn ConfirmationModal(

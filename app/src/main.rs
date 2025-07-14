@@ -4,8 +4,7 @@ mod components;
 mod pages;
 mod use_update_recording_mode;
 
-use pages::Home;
-use pages::Login;
+use pages::{Home, Login, NotFound};
 
 const MAIN_CSS: Asset = asset!("/assets/main.css");
 
@@ -19,6 +18,8 @@ enum Route {
     Home,
     #[route("/login")]
     Login,
+    #[route("/:..route")]
+    NotFound { route: Vec<String> },
 }
 
 #[component]

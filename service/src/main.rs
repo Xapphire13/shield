@@ -14,6 +14,7 @@ use crate::config::Config;
 mod app_error;
 mod config;
 mod handlers;
+mod middleware;
 mod routes;
 
 #[derive(Clone)]

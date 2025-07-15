@@ -29,7 +29,7 @@ pub async fn authenticate(
     )?;
 
     if !totp.check_current(&input.otp_code)? {
-        Err(anyhow!("Invalid OTP code"))?;
+        return Err(AppError::InvalidOtpCode);
     }
 
     let exp = Utc::now()

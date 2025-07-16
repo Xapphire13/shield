@@ -5,7 +5,15 @@ pub struct AuthenticateRequest {
     pub otp_code: String,
 }
 
+pub type AuthToken = String;
+
 #[derive(Serialize)]
 pub struct AuthenticationResponse {
-    pub token: String,
+    pub token: AuthToken,
+    pub refresh_token: String,
+}
+
+#[derive(Deserialize)]
+pub struct RefreshRequest {
+    pub refresh_token: String,
 }

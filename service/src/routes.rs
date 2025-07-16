@@ -16,6 +16,7 @@ pub fn create_routes() -> Router<AppState> {
     let auth_backoff_state = AuthBackoffState::new(900); // 15 minute reset window
     let auth_router = Router::new()
         .route("/authenticate", post(handlers::authenticate))
+        .route("/refresh", post(handlers::refresh))
         .layer(middleware::from_fn_with_state(
             auth_backoff_state.clone(),
             auth_backoff_middleware,

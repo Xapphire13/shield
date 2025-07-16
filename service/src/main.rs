@@ -9,18 +9,20 @@ use tracing::{Level, info, trace};
 use tracing_subscriber::{filter, layer::SubscriberExt, util::SubscriberInitExt};
 use unifi_protect_client::UnifiProtectClient;
 
-use crate::config::Config;
+use crate::{config::Config, refresh_token_store::RefreshTokenStore};
 
 mod app_error;
 mod config;
 mod handlers;
 mod middleware;
+mod refresh_token_store;
 mod routes;
 
 #[derive(Clone)]
 struct AppState {
     client: Arc<UnifiProtectClient>,
     config: Arc<Config>,
+    refresh_token_store: Arc<RefreshTokenStore>,
 }
 
 const PORT: i32 = 3000;
@@ -42,6 +44,7 @@ async fn main() {
             &config.credentials.password,
         )),
         config: Arc::new(config),
+        refresh_token_store: Arc::new(RefreshTokenStore::new()),
     };
 
     let app = routes::create_routes()

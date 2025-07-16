@@ -1,16 +1,20 @@
 use anyhow::anyhow;
 use axum::{Json, debug_handler, extract::State};
-use chrono::{Days, Utc};
+use chrono::{TimeDelta, Utc};
 use jsonwebtoken::{EncodingKey, Header};
-use shield_models::{AuthenticateRequest, AuthenticationResponse};
+use shield_models::{AuthToken, AuthenticateRequest, AuthenticationResponse};
 use totp_rs::{Algorithm, Secret, TOTP};
 
-use crate::{AppState, app_error::AppError, handlers::JwtClaims};
+use crate::{AppState, app_error::AppError, config::Config, handlers::JwtClaims};
 
 #[debug_handler]
 pub async fn authenticate(
-    State(AppState { config, .. }): State<AppState>,
-    Json(input): Json<AuthenticateRequest>,
+    State(AppState {
+        config,
+        refresh_token_store,
+        ..
+    }): State<AppState>,
+    Json(request): Json<AuthenticateRequest>,
 ) -> Result<Json<AuthenticationResponse>, AppError> {
     let totp = TOTP::new(
         Algorithm::SHA1,
@@ -28,12 +32,23 @@ pub async fn authenticate(
         .to_bytes()?,
     )?;
 
-    if !totp.check_current(&input.otp_code)? {
+    if !totp.check_current(&request.otp_code)? {
         return Err(AppError::InvalidOtpCode);
     }
 
+    let token = create_auth_token(&config)?;
+    let refresh_token = refresh_token_store.generate_new_token()?;
+
+    Ok(Json(AuthenticationResponse {
+        token,
+        refresh_token: refresh_token.token,
+    }))
+}
+
+/// Auth tokens expire after 30 minutes
+pub fn create_auth_token(config: &Config) -> anyhow::Result<AuthToken> {
     let exp = Utc::now()
-        .checked_add_days(Days::new(30))
+        .checked_add_signed(TimeDelta::minutes(30))
         .ok_or(anyhow!("Couldn't calculate JWT expiry"))?;
 
     let token = jsonwebtoken::encode(
@@ -51,5 +66,5 @@ pub async fn authenticate(
         ),
     )?;
 
-    Ok(Json(AuthenticationResponse { token }))
+    Ok(token)
 }

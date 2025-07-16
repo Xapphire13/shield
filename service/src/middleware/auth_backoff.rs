@@ -102,7 +102,7 @@ pub async fn auth_backoff_middleware(
             let new_count = backoff_state.increment_failures();
             warn!("Auth failed. Failure count: {}", new_count);
         }
-        status if status.is_success() => {
+        status if status.is_success() && backoff_state.get_failure_count() > 0 => {
             backoff_state.reset_failures();
         }
         _ => {} // Other errors don't affect backoff

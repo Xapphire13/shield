@@ -1,9 +1,11 @@
 mod authenticate;
 mod list_cameras;
+mod refresh;
 mod set_recording_mode;
 
 pub use authenticate::*;
 pub use list_cameras::*;
+pub use refresh::*;
 pub use set_recording_mode::*;
 
 use anyhow::anyhow;

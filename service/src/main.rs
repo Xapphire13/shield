@@ -1,11 +1,12 @@
 use std::sync::Arc;
 
 use axum::http::{Request, Response, header::CONTENT_TYPE};
+use chrono::Duration;
 use tower_http::{
     cors::{Any, CorsLayer},
     trace::TraceLayer,
 };
-use tracing::{Level, info, trace};
+use tracing::{Level, error, info, trace};
 use tracing_subscriber::{filter, layer::SubscriberExt, util::SubscriberInitExt};
 use unifi_protect_client::UnifiProtectClient;
 
@@ -36,6 +37,7 @@ async fn main() {
         .init();
 
     let config = Config::load();
+    let refresh_token_store = Arc::new(RefreshTokenStore::new());
 
     let app_state = AppState {
         client: Arc::new(UnifiProtectClient::new(
@@ -44,8 +46,19 @@ async fn main() {
             &config.credentials.password,
         )),
         config: Arc::new(config),
-        refresh_token_store: Arc::new(RefreshTokenStore::new()),
+        refresh_token_store: refresh_token_store.clone(),
     };
+
+    let refresh_token_cleanup_task = std::thread::spawn(move || {
+        loop {
+            std::thread::sleep(Duration::minutes(15).to_std().unwrap());
+
+            match refresh_token_store.cleanup_tokens() {
+                Ok(_) => {}
+                Err(err) => error!("Error cleaning expired tokens: {err}"),
+            }
+        }
+    });
 
     let app = routes::create_routes()
         .with_state(app_state)
@@ -84,4 +97,5 @@ async fn main() {
         .unwrap();
     info!("Listening on port {PORT}");
     axum::serve(listener, app).await.unwrap();
+    refresh_token_cleanup_task.join().unwrap();
 }

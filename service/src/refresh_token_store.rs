@@ -41,7 +41,7 @@ impl RefreshTokenStore {
                 .timestamp(),
         };
 
-        info!("Created refresh token: {token:?}");
+        info!("Created refresh token");
         self.db.insert(&token.token, to_allocvec(&token)?)?;
 
         Ok(token)
@@ -59,5 +59,23 @@ impl RefreshTokenStore {
         } else {
             Ok(())
         }
+    }
+
+    /// Cleans up expired tokens
+    pub fn cleanup_tokens(&self) -> Result<()> {
+        let mut count = 0;
+
+        for (key, value) in self.db.iter().filter_map(|record| record.ok()) {
+            let token: RefreshToken = from_bytes(value.deref())?;
+
+            if token.expires <= Utc::now().timestamp() {
+                self.db.remove(key)?;
+                count += 1;
+            }
+        }
+
+        info!("Cleaned {count} expired tokens");
+
+        Ok(())
     }
 }

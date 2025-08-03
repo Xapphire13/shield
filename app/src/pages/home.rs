@@ -3,21 +3,20 @@ use std::collections::HashMap;
 
 use crate::{
     components::{Camera, ConfirmationModal, ConfirmationModalType, GroupActions, ui::RowGroup},
-    get_api_url,
+    use_api_client::use_api_client,
     use_update_recording_mode::use_update_recording_mode,
 };
 
 #[component]
 pub fn Home() -> Element {
-    let cameras = use_resource(|| async move {
-        let url = get_api_url("/cameras");
-
-        reqwest::get(url)
-            .await
+    let client = use_api_client();
+    let cameras = use_resource(move || async move {
+        client
+            .as_ref()
             .unwrap()
-            .json::<Vec<shield_models::Camera>>()
+            .get_cameras()
             .await
-            .unwrap()
+            .unwrap_or(Vec::new())
     });
     let update_recording_mode = use_update_recording_mode();
     let mut confirmation_modal_type = use_signal(|| ConfirmationModalType::None);

@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 use web_sys::{HtmlElement, wasm_bindgen::JsCast, window};
 
-use crate::components::ui::PrimaryButton;
+use crate::{Route, components::ui::PrimaryButton, use_api_client::use_api_client};
 
 fn focus_element(id: &str) {
     window()
@@ -13,6 +13,8 @@ fn focus_element(id: &str) {
 
 #[component]
 pub fn Login() -> Element {
+    let nav = navigator();
+    let client = use_api_client();
     let mut code = use_signal(String::new);
 
     let handle_input = |digit: u8| {
@@ -36,6 +38,19 @@ pub fn Login() -> Element {
             }
         }
     };
+
+    let handle_submit = use_callback(move |_| {
+        spawn(async move {
+            match client.as_ref().unwrap().authenticate(code()).await {
+                Ok(_) => {
+                    nav.replace(Route::Home);
+                }
+                Err(_) => {
+                    // TODO
+                }
+            }
+        });
+    });
 
     let code = code();
     let mut digits = code.chars();
@@ -94,7 +109,7 @@ pub fn Login() -> Element {
                         value: digits.next().map(|c| c.to_string()).unwrap_or(String::new()),
                     }
                 }
-                PrimaryButton { id: "otp-submit-button", "Submit" }
+                PrimaryButton { id: "otp-submit-button", on_press: handle_submit, "Submit" }
             }
         }
     }

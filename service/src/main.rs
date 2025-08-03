@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
-use axum::http::{Request, Response, header::CONTENT_TYPE};
+use axum::http::{
+    Request, Response,
+    header::{AUTHORIZATION, CONTENT_TYPE},
+};
 use chrono::Duration;
 use tower_http::{
     cors::{Any, CorsLayer},
@@ -65,7 +68,7 @@ async fn main() {
         .layer(
             CorsLayer::new()
                 .allow_origin(Any)
-                .allow_headers([CONTENT_TYPE]),
+                .allow_headers([CONTENT_TYPE, AUTHORIZATION]),
         )
         .layer(
             TraceLayer::new_for_http()

@@ -1,27 +1,24 @@
 use dioxus::prelude::*;
 use shield_models::{RecordingMode, SetRecordingModeRequest};
 
-use crate::get_api_url;
+use crate::use_api_client::use_api_client;
 
 pub fn use_update_recording_mode() -> impl Fn(Vec<String>, RecordingMode) {
-    |ids, mode| {
-        let url = get_api_url("/set_recording_mode");
+    let client = use_api_client();
 
+    move |ids, mode| {
         spawn(async move {
-            let res = reqwest::Client::new()
-                .post(url)
-                .json(&SetRecordingModeRequest {
+            let result = client
+                .as_ref()
+                .unwrap()
+                .set_recording_mode(SetRecordingModeRequest {
                     camera_ids: ids,
                     mode,
                 })
-                .send()
                 .await;
 
-            match res {
-                Ok(res) if res.status().is_success() => {
-                    web_sys::window().unwrap().location().reload().unwrap()
-                }
-                _ => {}
+            if result.is_ok() {
+                web_sys::window().unwrap().location().reload().unwrap()
             }
         });
     }

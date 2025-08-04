@@ -111,7 +111,7 @@ impl ApiClient {
     }
 
     pub async fn get_cameras(&self) -> Result<Vec<shield_models::Camera>, ApiError> {
-        let request = self.client.get(&format!("{}/cameras", self.base_url));
+        let request = self.client.get(format!("{}/cameras", self.base_url));
 
         Ok(self.execute_with_auth(request).await?.json().await?)
     }
@@ -122,7 +122,7 @@ impl ApiClient {
     ) -> Result<(), ApiError> {
         let req = self
             .client
-            .post(&format!("{}/set_recording_mode", self.base_url))
+            .post(format!("{}/set_recording_mode", self.base_url))
             .json(&request);
 
         self.execute_with_auth(req).await?;
@@ -133,7 +133,7 @@ impl ApiClient {
     pub async fn authenticate(&self, otp_code: String) -> Result<(), ApiError> {
         let response: AuthenticationResponse = self
             .client
-            .post(&format!("{}/authenticate", self.base_url))
+            .post(format!("{}/authenticate", self.base_url))
             .json(&AuthenticateRequest { otp_code })
             .send()
             .await?
@@ -149,7 +149,7 @@ impl ApiClient {
     async fn refresh_access_token(&self) -> Result<(), ApiError> {
         let response: AuthenticationResponse = self
             .client
-            .post(&format!("{}/refresh", self.base_url))
+            .post(format!("{}/refresh", self.base_url))
             .json(&RefreshRequest {
                 refresh_token: self
                     .tokens

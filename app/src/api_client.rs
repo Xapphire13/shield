@@ -1,127 +1,169 @@
-use std::cell::RefCell;
-
-use anyhow::{Result, anyhow};
-use dioxus::logger::tracing;
-use gloo_storage::{LocalStorage, Storage};
-use reqwest::StatusCode;
-use serde::{Serialize, de::DeserializeOwned};
+use gloo_storage::errors::StorageError;
+use reqwest::{RequestBuilder, StatusCode};
+use serde::de::DeserializeOwned;
 use shield_models::{
     AuthenticateRequest, AuthenticationResponse, RefreshRequest, SetRecordingModeRequest,
 };
 
+use crate::token_store::TokenStore;
+
+static APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
+
+pub enum ApiError {
+    NetworkError,
+    Unauthorized,
+    BadRequest,
+    ServerError,
+    TokenMissing,
+    StorageError,
+}
+
+impl From<reqwest::Error> for ApiError {
+    fn from(_: reqwest::Error) -> Self {
+        Self::NetworkError
+    }
+}
+
+impl From<StorageError> for ApiError {
+    fn from(_: StorageError) -> Self {
+        ApiError::StorageError
+    }
+}
+
 pub struct ApiClient {
-    token: RefCell<Option<String>>,
-    refresh_token: RefCell<Option<String>>,
-    on_not_authorized: Box<dyn Fn() + 'static>,
+    client: reqwest::Client,
+    base_url: String,
+    tokens: TokenStore,
+    on_unauthorized: Box<dyn Fn() + 'static>,
 }
 
 impl ApiClient {
-    pub fn new(on_not_authorized: impl Fn() + 'static) -> Result<Self> {
-        let token = LocalStorage::get("api_token").map_or(None, Some);
-        let refresh_token = LocalStorage::get("refresh_token").map_or(None, Some);
+    pub fn new(base_url: String, on_not_authorized: impl Fn() + 'static) -> Result<Self, ApiError> {
+        let client = reqwest::Client::builder()
+            .user_agent(APP_USER_AGENT)
+            .build()?;
 
         Ok(Self {
-            token: RefCell::new(token),
-            refresh_token: RefCell::new(refresh_token),
-            on_not_authorized: Box::new(on_not_authorized),
+            base_url,
+            client,
+            tokens: TokenStore::new(),
+            on_unauthorized: Box::new(on_not_authorized),
         })
     }
 
-    async fn make_get_request<TResponse: DeserializeOwned>(&self, path: &str) -> Result<TResponse> {
-        let res = reqwest::Client::new()
-            .get(path)
-            .bearer_auth(self.token.borrow().clone().unwrap_or(String::new()))
-            .send()
-            .await?;
+    async fn execute_with_auth<T>(&self, request_builder: RequestBuilder) -> Result<T, ApiError>
+    where
+        T: DeserializeOwned,
+    {
+        let token = self
+            .tokens
+            .get_access_token()
+            .ok_or(ApiError::TokenMissing)?;
 
-        if res.status() == StatusCode::UNAUTHORIZED {
-            tracing::info!("Unauthorized");
+        let request = request_builder
+            .try_clone()
+            .unwrap()
+            .bearer_auth(&token)
+            .build()?;
 
-            match self.refresh_token().await {
-                Ok(_) => return Box::pin(self.make_get_request::<TResponse>(path)).await,
-                Err(_) => self.on_not_authorized.as_ref()(),
+        let response = self.client.execute(request).await?;
+
+        match response.status() {
+            StatusCode::UNAUTHORIZED => self.refresh_token_and_retry(request_builder).await,
+            status if status.is_success() => Ok(response.json().await?),
+            status => {
+                if status.is_client_error() {
+                    Err(ApiError::BadRequest)
+                } else {
+                    Err(ApiError::ServerError)
+                }
             }
         }
-
-        Ok(res.json::<TResponse>().await?)
     }
 
-    async fn make_post_request<TRequest: Serialize>(
+    async fn refresh_token_and_retry<T>(
         &self,
-        path: &str,
-        request: &TRequest,
-    ) -> Result<()> {
-        let response = reqwest::Client::new()
-            .post(path)
-            .bearer_auth(self.token.borrow().clone().unwrap_or(String::new()))
-            .json(request)
-            .send()
-            .await?;
+        request_builder: RequestBuilder,
+    ) -> Result<T, ApiError>
+    where
+        T: DeserializeOwned,
+    {
+        match self.refresh_access_token().await {
+            Ok(_) => {
+                let new_token = self
+                    .tokens
+                    .get_access_token()
+                    .ok_or(ApiError::TokenMissing)?;
+                let retry_request = request_builder.bearer_auth(&new_token).build()?;
 
-        if !response.status().is_success() {
-            return Err(anyhow::anyhow!(
-                "API request failed with status {}",
-                response.status()
-            ));
+                let response = self.client.execute(retry_request).await?;
+
+                if response.status().is_success() {
+                    Ok(response.json().await?)
+                } else {
+                    Err(ApiError::Unauthorized)
+                }
+            }
+            Err(_) => {
+                // Refresh failed, clear tokens and notify
+                self.tokens.clear_tokens();
+                (self.on_unauthorized)();
+                Err(ApiError::Unauthorized)
+            }
         }
-
-        Ok(())
     }
 
-    pub async fn get_cameras(&self) -> Result<Vec<shield_models::Camera>> {
-        self.make_get_request(&get_api_url("/cameras")).await
+    pub async fn get_cameras(&self) -> Result<Vec<shield_models::Camera>, ApiError> {
+        let request = self.client.get(&format!("{}/cameras", self.base_url));
+        self.execute_with_auth(request).await
     }
 
-    pub async fn set_recording_mode(&self, request: SetRecordingModeRequest) -> Result<()> {
-        self.make_post_request(&get_api_url("/set_recording_mode"), &request)
-            .await
+    pub async fn set_recording_mode(
+        &self,
+        request: SetRecordingModeRequest,
+    ) -> Result<(), ApiError> {
+        let req = self
+            .client
+            .post(&format!("{}/set_recording_mode", self.base_url))
+            .json(&request);
+
+        self.execute_with_auth::<()>(req).await // Unit type for no response body
     }
 
-    pub async fn authenticate(&self, otp_code: String) -> Result<()> {
-        let response: AuthenticationResponse = reqwest::Client::new()
-            .post(&get_api_url("/authenticate"))
+    pub async fn authenticate(&self, otp_code: String) -> Result<(), ApiError> {
+        let response: AuthenticationResponse = self
+            .client
+            .post(&format!("{}/authenticate", self.base_url))
             .json(&AuthenticateRequest { otp_code })
             .send()
             .await?
             .json()
             .await?;
 
-        LocalStorage::set("api_token", response.token.clone())?;
-        LocalStorage::set("refresh_token", response.refresh_token.clone())?;
-
-        self.token.replace(Some(response.token));
-        self.refresh_token.replace(Some(response.refresh_token));
+        self.tokens
+            .set_tokens(response.token.clone(), response.refresh_token.clone())?;
 
         Ok(())
     }
 
-    async fn refresh_token(&self) -> Result<()> {
-        let response: AuthenticationResponse = reqwest::Client::new()
-            .post(&get_api_url("/refresh"))
+    async fn refresh_access_token(&self) -> Result<(), ApiError> {
+        let response: AuthenticationResponse = self
+            .client
+            .post(&format!("{}/refresh", self.base_url))
             .json(&RefreshRequest {
                 refresh_token: self
-                    .refresh_token
-                    .borrow()
-                    .clone()
-                    .ok_or(anyhow!("Refresh token not found"))?,
+                    .tokens
+                    .get_refresh_token()
+                    .ok_or(ApiError::TokenMissing)?,
             })
             .send()
             .await?
             .json()
             .await?;
 
-        LocalStorage::set("api_token", response.token.clone())?;
-        LocalStorage::set("refresh_token", response.refresh_token.clone())?;
-
-        self.token.replace(Some(response.token));
-        self.refresh_token.replace(Some(response.refresh_token));
+        self.tokens
+            .set_tokens(response.token.clone(), response.refresh_token.clone())?;
 
         Ok(())
     }
-}
-
-pub fn get_api_url(path: &str) -> String {
-    let hostname = web_sys::window().unwrap().location().hostname().unwrap();
-
-    format!("http://{hostname}:3000{path}")
 }

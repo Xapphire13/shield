@@ -3,25 +3,16 @@ use std::collections::HashMap;
 
 use crate::{
     components::{Camera, ConfirmationModal, ConfirmationModalType, GroupActions, ui::RowGroup},
-    use_api_client::use_api_client,
+    use_cameras::{UseCamerasResult, use_cameras},
     use_update_recording_mode::use_update_recording_mode,
 };
 
 #[component]
 pub fn Home() -> Element {
-    let client = use_api_client();
-    let cameras = use_resource(move || async move {
-        client
-            .as_ref()
-            .unwrap()
-            .get_cameras()
-            .await
-            .unwrap_or(Vec::new())
-    });
+    let UseCamerasResult { cameras, loading } = use_cameras();
     let update_recording_mode = use_update_recording_mode();
     let mut confirmation_modal_type = use_signal(|| ConfirmationModalType::None);
     let mut selected_camera_ids: Signal<Vec<String>> = use_signal(Vec::new);
-    let cameras = cameras.cloned().unwrap_or_else(Vec::new);
     let mut tag_groups: HashMap<String, Vec<&shield_models::Camera>> = HashMap::new();
     let mut untagged_cameras = vec![];
 
@@ -59,6 +50,10 @@ pub fn Home() -> Element {
 
     rsx! {
         div { class: "home-container",
+            if loading {
+                "Loading..."
+            }
+
             {
                 tags.iter()
                     .map(|tag| {

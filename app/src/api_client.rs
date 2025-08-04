@@ -1,6 +1,5 @@
 use gloo_storage::errors::StorageError;
-use reqwest::{RequestBuilder, StatusCode};
-use serde::de::DeserializeOwned;
+use reqwest::{RequestBuilder, Response, StatusCode};
 use shield_models::{
     AuthenticateRequest, AuthenticationResponse, RefreshRequest, SetRecordingModeRequest,
 };
@@ -9,6 +8,7 @@ use crate::token_store::TokenStore;
 
 static APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
 
+#[derive(Debug)]
 pub enum ApiError {
     NetworkError,
     Unauthorized,
@@ -51,10 +51,10 @@ impl ApiClient {
         })
     }
 
-    async fn execute_with_auth<T>(&self, request_builder: RequestBuilder) -> Result<T, ApiError>
-    where
-        T: DeserializeOwned,
-    {
+    async fn execute_with_auth(
+        &self,
+        request_builder: RequestBuilder,
+    ) -> Result<Response, ApiError> {
         let token = self
             .tokens
             .get_access_token()
@@ -70,7 +70,7 @@ impl ApiClient {
 
         match response.status() {
             StatusCode::UNAUTHORIZED => self.refresh_token_and_retry(request_builder).await,
-            status if status.is_success() => Ok(response.json().await?),
+            status if status.is_success() => Ok(response),
             status => {
                 if status.is_client_error() {
                     Err(ApiError::BadRequest)
@@ -81,13 +81,10 @@ impl ApiClient {
         }
     }
 
-    async fn refresh_token_and_retry<T>(
+    async fn refresh_token_and_retry(
         &self,
         request_builder: RequestBuilder,
-    ) -> Result<T, ApiError>
-    where
-        T: DeserializeOwned,
-    {
+    ) -> Result<Response, ApiError> {
         match self.refresh_access_token().await {
             Ok(_) => {
                 let new_token = self
@@ -99,7 +96,7 @@ impl ApiClient {
                 let response = self.client.execute(retry_request).await?;
 
                 if response.status().is_success() {
-                    Ok(response.json().await?)
+                    Ok(response)
                 } else {
                     Err(ApiError::Unauthorized)
                 }
@@ -115,7 +112,8 @@ impl ApiClient {
 
     pub async fn get_cameras(&self) -> Result<Vec<shield_models::Camera>, ApiError> {
         let request = self.client.get(&format!("{}/cameras", self.base_url));
-        self.execute_with_auth(request).await
+
+        Ok(self.execute_with_auth(request).await?.json().await?)
     }
 
     pub async fn set_recording_mode(
@@ -127,7 +125,9 @@ impl ApiClient {
             .post(&format!("{}/set_recording_mode", self.base_url))
             .json(&request);
 
-        self.execute_with_auth::<()>(req).await // Unit type for no response body
+        self.execute_with_auth(req).await?;
+
+        Ok(())
     }
 
     pub async fn authenticate(&self, otp_code: String) -> Result<(), ApiError> {

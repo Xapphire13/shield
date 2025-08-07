@@ -8,6 +8,3 @@ opt-level = 1
 
 [profile.server-dev]
 inherits = "dev"
-
-[profile.android-dev]
-inherits = "dev"

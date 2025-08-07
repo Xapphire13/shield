@@ -38,17 +38,18 @@ pub struct ApiClient {
 }
 
 impl ApiClient {
-    pub fn new(base_url: String, on_not_authorized: impl Fn() + 'static) -> Result<Self, ApiError> {
+    pub fn new(base_url: String, on_not_authorized: impl Fn() + 'static) -> Self {
         let client = reqwest::Client::builder()
             .user_agent(APP_USER_AGENT)
-            .build()?;
+            .build()
+            .unwrap();
 
-        Ok(Self {
+        Self {
             base_url,
             client,
             tokens: TokenStore::new(),
             on_unauthorized: Box::new(on_not_authorized),
-        })
+        }
     }
 
     async fn execute_with_auth(

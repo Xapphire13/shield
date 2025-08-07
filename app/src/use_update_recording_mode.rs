@@ -7,10 +7,9 @@ pub fn use_update_recording_mode() -> impl Fn(Vec<String>, RecordingMode) {
     let client = use_api_client();
 
     move |ids, mode| {
+        let client = client.clone();
         spawn(async move {
             let result = client
-                .as_ref()
-                .unwrap()
                 .set_recording_mode(SetRecordingModeRequest {
                     camera_ids: ids,
                     mode,

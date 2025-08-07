@@ -40,8 +40,9 @@ pub fn Login() -> Element {
     };
 
     let handle_submit = use_callback(move |_| {
+        let client = client.clone();
         spawn(async move {
-            match client.as_ref().unwrap().authenticate(code()).await {
+            match client.authenticate(code()).await {
                 Ok(_) => {
                     nav.replace(Route::Home);
                 }

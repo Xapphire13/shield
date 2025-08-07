@@ -9,13 +9,9 @@ pub struct UseCamerasResult {
 
 pub fn use_cameras() -> UseCamerasResult {
     let client = use_api_client();
-    let cameras = use_resource(move || async move {
-        client
-            .as_ref()
-            .unwrap()
-            .get_cameras()
-            .await
-            .unwrap_or(Vec::new())
+    let cameras = use_resource(move || {
+        let client = client.clone();
+        async move { client.get_cameras().await.unwrap_or(Vec::new()) }
     });
 
     UseCamerasResult {

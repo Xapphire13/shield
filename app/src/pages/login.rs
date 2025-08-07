@@ -1,15 +1,8 @@
+use crate::{
+    api::AuthApi, app::Route, components::PrimaryButton, hooks::use_api_client,
+    utils::focus_element,
+};
 use dioxus::prelude::*;
-use web_sys::{HtmlElement, wasm_bindgen::JsCast, window};
-
-use crate::{Route, components::ui::PrimaryButton, use_api_client::use_api_client};
-
-fn focus_element(id: &str) {
-    window()
-        .and_then(|w| w.document())
-        .and_then(|d| d.get_element_by_id(id))
-        .and_then(|el| el.dyn_into::<HtmlElement>().ok())
-        .and_then(|input| input.focus().ok());
-}
 
 #[component]
 pub fn Login() -> Element {
@@ -30,10 +23,10 @@ pub fn Login() -> Element {
                 code.set(next);
 
                 if next_digit > 6 {
-                    focus_element("otp-submit-button");
+                    let _ = focus_element("otp-submit-button");
                 } else {
                     let next_input_id = format!("otp-digit-{next_digit}");
-                    focus_element(&next_input_id);
+                    let _ = focus_element(&next_input_id);
                 }
             }
         }
@@ -42,7 +35,7 @@ pub fn Login() -> Element {
     let handle_submit = use_callback(move |_| {
         let client = client.clone();
         spawn(async move {
-            match client.authenticate(code()).await {
+            match AuthApi::authenticate(&*client, code()).await {
                 Ok(_) => {
                     nav.replace(Route::Home);
                 }

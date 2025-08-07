@@ -1,10 +1,9 @@
 use dioxus::prelude::*;
-use std::collections::HashMap;
 
 use crate::{
-    components::{Camera, ConfirmationModal, ConfirmationModalType, GroupActions, ui::RowGroup},
-    use_cameras::{UseCamerasResult, use_cameras},
-    use_update_recording_mode::use_update_recording_mode,
+    components::{Camera, ConfirmationModal, ConfirmationModalType, GroupActions, RowGroup},
+    hooks::{UseCamerasResult, use_cameras, use_update_recording_mode},
+    utils::{get_camera_ids, get_camera_names_by_ids, group_cameras_by_tags},
 };
 
 #[component]
@@ -13,8 +12,7 @@ pub fn Home() -> Element {
     let update_recording_mode = use_update_recording_mode();
     let mut confirmation_modal_type = use_signal(|| ConfirmationModalType::None);
     let mut selected_camera_ids: Signal<Vec<String>> = use_signal(Vec::new);
-    let mut tag_groups: HashMap<String, Vec<&shield_models::Camera>> = HashMap::new();
-    let mut untagged_cameras = vec![];
+    let (tag_groups, untagged_cameras) = group_cameras_by_tags(&cameras);
 
     let mut handle_toggle_record_on = move |camera_ids: Vec<String>| {
         selected_camera_ids.set(camera_ids);
@@ -28,25 +26,9 @@ pub fn Home() -> Element {
         confirmation_modal_type.set(ConfirmationModalType::None);
     };
 
-    for camera in cameras.iter() {
-        for tag in &camera.tags {
-            tag_groups
-                .entry(tag.to_owned())
-                .and_modify(|group| {
-                    group.push(camera);
-                })
-                .or_insert_with(|| vec![camera]);
-        }
-
-        if camera.tags.is_empty() {
-            untagged_cameras.push(camera);
-        }
-    }
-    let tags = {
-        let mut tags: Vec<String> = tag_groups.keys().cloned().collect();
-        tags.sort();
-        tags
-    };
+    let mut tags: Vec<String> = tag_groups.keys().cloned().collect();
+    tags.sort();
+    let tags = tags; // Remove mutability
 
     rsx! {
         div { class: "home-container",
@@ -58,10 +40,7 @@ pub fn Home() -> Element {
                 tags.iter()
                     .map(|tag| {
                         let cameras = tag_groups.get(tag).unwrap();
-                        let camera_ids: Vec<String> = cameras
-                            .iter()
-                            .map(|camera| camera.id.clone())
-                            .collect();
+                        let camera_ids = get_camera_ids(cameras);
                         rsx! {
                             RowGroup {
                                 label: tag,
@@ -91,17 +70,11 @@ pub fn Home() -> Element {
                     actions: rsx! {
                         GroupActions {
                             on_toggle_record_on: {
-                                let camera_ids = untagged_cameras
-                                    .iter()
-                                    .map(|&camera| camera.id.clone())
-                                    .collect::<Vec<_>>();
+                                let camera_ids = get_camera_ids(&untagged_cameras);
                                 move || handle_toggle_record_on(camera_ids.clone())
                             },
                             on_toggle_record_off: {
-                                let camera_ids = untagged_cameras
-                                    .iter()
-                                    .map(|&camera| camera.id.clone())
-                                    .collect::<Vec<_>>();
+                                let camera_ids = get_camera_ids(&untagged_cameras);
                                 move || handle_toggle_record_off(camera_ids.clone())
                             },
                         }
@@ -124,16 +97,7 @@ pub fn Home() -> Element {
                             );
                             handle_close_confirmation_modal();
                         },
-                        camera_names: selected_camera_ids()
-                            .iter()
-                            .flat_map(|id| {
-                                cameras
-                                    .iter()
-                                    .find_map(|camera| {
-                                        if &camera.id == id { Some(camera.name.clone()) } else { None }
-                                    })
-                            })
-                            .collect(),
+                        camera_names: get_camera_names_by_ids(&cameras, &selected_camera_ids()),
                     }
                 },
                 ConfirmationModalType::ConfirmToggleOff => rsx! {
@@ -147,16 +111,7 @@ pub fn Home() -> Element {
                             );
                             handle_close_confirmation_modal();
                         },
-                        camera_names: selected_camera_ids()
-                            .iter()
-                            .flat_map(|id| {
-                                cameras
-                                    .iter()
-                                    .find_map(|camera| {
-                                        if &camera.id == id { Some(camera.name.clone()) } else { None }
-                                    })
-                            })
-                            .collect(),
+                        camera_names: get_camera_names_by_ids(&cameras, &selected_camera_ids()),
                     }
                 },
                 ConfirmationModalType::None => rsx! {},

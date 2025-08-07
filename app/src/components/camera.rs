@@ -1,15 +1,14 @@
-use dioxus::prelude::*;
-use shield_models::RecordingMode;
+pub mod recording_indicator;
 
-use crate::components::{RecordingIndicator, ui::DisclosureRow};
+pub use recording_indicator::RecordingIndicator;
+
+use dioxus::prelude::*;
+
+use crate::{components::ui::DisclosureRow, utils::RecordingModeExtensions};
 
 #[component]
 pub fn Camera(camera: shield_models::Camera) -> Element {
-    let recording_mode = match camera.recording_settings.mode {
-        RecordingMode::Always => "Always",
-        RecordingMode::Schedule => "Schedule",
-        RecordingMode::Never => "Never",
-    };
+    let recording_mode = camera.recording_settings.mode.display_name();
 
     rsx! {
         DisclosureRow {

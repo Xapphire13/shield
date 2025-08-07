@@ -2,10 +2,10 @@ use dioxus::prelude::*;
 
 #[component]
 pub fn RecordingIndicator(is_recording: bool) -> Element {
-    let fill = if is_recording { "red" } else { "#B6B6B6" };
+    // let fill = if is_recording { "red" } else { "#B6B6B6" };
 
     rsx! {
-        svg { width: "16px", height: "16px",
+        svg { width: "16px", height: "16px", class: "recording-indicator", "data-recording": is_recording,
 
             // Outer circle
             defs {
@@ -31,7 +31,7 @@ pub fn RecordingIndicator(is_recording: bool) -> Element {
                 cx: "8",
                 cy: "8",
                 r: "8",
-                fill,
+                fill: "var(--fill)",
                 mask: "url(#recording-indicator-mask)",
             }
 
@@ -40,7 +40,7 @@ pub fn RecordingIndicator(is_recording: bool) -> Element {
                 cx: "8",
                 cy: "8",
                 r: "5",
-                fill,
+                fill: "var(--fill)",
             }
         }
     }

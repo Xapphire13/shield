@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 
-use crate::use_api_client::use_api_client;
+use crate::{api::CameraApi, hooks::use_api_client::use_api_client};
 
 pub struct UseCamerasResult {
     pub cameras: Vec<shield_models::Camera>,

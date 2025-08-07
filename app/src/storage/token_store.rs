@@ -1,6 +1,8 @@
+use gloo_storage::{LocalStorage, Storage, errors::StorageError};
 use std::{cell::RefCell, rc::Rc};
 
-use gloo_storage::{LocalStorage, Storage, errors::StorageError};
+pub const ACCESS_TOKEN_KEY: &str = "api_token";
+pub const REFRESH_TOKEN_KEY: &str = "refresh_token";
 
 #[derive(Clone)]
 pub struct TokenStore {
@@ -10,8 +12,8 @@ pub struct TokenStore {
 
 impl TokenStore {
     pub fn new() -> Self {
-        let access_token = LocalStorage::get("api_token").ok();
-        let refresh_token = LocalStorage::get("refresh_token").ok();
+        let access_token = LocalStorage::get(ACCESS_TOKEN_KEY).ok();
+        let refresh_token = LocalStorage::get(REFRESH_TOKEN_KEY).ok();
 
         Self {
             access_token: Rc::new(RefCell::new(access_token)),
@@ -28,8 +30,8 @@ impl TokenStore {
     }
 
     pub fn set_tokens(&self, access: String, refresh: String) -> Result<(), StorageError> {
-        LocalStorage::set("api_token", access.clone())?;
-        LocalStorage::set("refresh_token", refresh.clone())?;
+        LocalStorage::set(ACCESS_TOKEN_KEY, access.clone())?;
+        LocalStorage::set(REFRESH_TOKEN_KEY, refresh.clone())?;
 
         self.access_token.replace(Some(access));
         self.refresh_token.replace(Some(refresh));
@@ -38,8 +40,8 @@ impl TokenStore {
     }
 
     pub fn clear_tokens(&self) {
-        LocalStorage::delete("api_token");
-        LocalStorage::delete("refresh_token");
+        LocalStorage::delete(ACCESS_TOKEN_KEY);
+        LocalStorage::delete(REFRESH_TOKEN_KEY);
 
         self.access_token.replace(None);
         self.refresh_token.replace(None);

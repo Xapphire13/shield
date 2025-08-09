@@ -5,7 +5,11 @@ pub fn RecordingIndicator(is_recording: bool) -> Element {
     // let fill = if is_recording { "red" } else { "#B6B6B6" };
 
     rsx! {
-        svg { width: "16px", height: "16px", class: "recording-indicator", "data-recording": is_recording,
+        svg {
+            width: "16px",
+            height: "16px",
+            class: "recording-indicator",
+            "data-recording": is_recording,
 
             // Outer circle
             defs {

@@ -165,6 +165,12 @@ body {
     font-weight: bold;
 }
 
+.button[disabled="true"] {
+    background-color: #b6b6b6;
+    border-color: #616e8e;
+    cursor: default;
+}
+
 ul {
     margin: 8px;
     padding: 0 0 0 16px;

@@ -1,3 +1,4 @@
+mod base_button;
 pub mod icon_button;
 pub mod primary_button;
 pub mod secondary_button;

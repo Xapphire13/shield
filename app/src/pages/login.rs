@@ -1,7 +1,10 @@
 use crate::{
     api::AuthApi,
     app::Route,
-    components::{PrimaryButton, otp_input::OtpInput},
+    components::{
+        PrimaryButton,
+        otp_input::{OtpInput, code_is_filled_out},
+    },
     hooks::use_api_client,
 };
 use dioxus::prelude::*;
@@ -11,10 +14,12 @@ pub fn Login() -> Element {
     let nav = navigator();
     let client = use_api_client();
     let mut code = use_signal(|| ['\0', '\0', '\0', '\0', '\0', '\0']);
+    let mut loading = use_signal(|| false);
 
     let handle_code_changed = use_callback(move |new_code| code.set(new_code));
 
     let handle_submit = use_callback(move |_| {
+        loading.set(true);
         let client = client.clone();
         spawn(async move {
             match client.authenticate(code().iter().collect()).await {
@@ -25,6 +30,8 @@ pub fn Login() -> Element {
                     // TODO
                 }
             }
+
+            loading.set(false);
         });
     });
 
@@ -37,7 +44,15 @@ pub fn Login() -> Element {
                     on_change: handle_code_changed,
                     on_submit: handle_submit,
                 }
-                PrimaryButton { id: "otp-submit-button", on_press: handle_submit, "Submit" }
+                PrimaryButton {
+                    on_press: handle_submit,
+                    disabled: loading() || !code_is_filled_out(code()),
+                    if loading() {
+                        "Loading..."
+                    } else {
+                        "Submit"
+                    }
+                }
             }
         }
     }

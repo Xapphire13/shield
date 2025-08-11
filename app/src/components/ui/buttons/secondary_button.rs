@@ -1,16 +1,20 @@
 use dioxus::prelude::*;
 
+use crate::components::buttons::base_button::BaseButton;
+
 #[component]
-pub fn SecondaryButton(on_press: Option<Callback>, children: Element) -> Element {
+pub fn SecondaryButton(
+    class: Option<String>,
+    on_press: Option<Callback>,
+    disabled: Option<bool>,
+    children: Element,
+) -> Element {
     rsx! {
-        button {
+        BaseButton {
             class: "secondary-button",
-            onclick: move |_| {
-                if let Some(on_press) = on_press {
-                    on_press(())
-                }
-            },
-            {children}
+            on_press,
+            disabled,
+            children,
         }
     }
 }

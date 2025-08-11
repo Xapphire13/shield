@@ -1,17 +1,20 @@
 use dioxus::prelude::*;
 
+use crate::components::buttons::base_button::BaseButton;
+
 #[component]
-pub fn PrimaryButton(on_press: Option<Callback>, children: Element, id: Option<String>) -> Element {
+pub fn PrimaryButton(
+    class: Option<String>,
+    on_press: Option<Callback>,
+    disabled: Option<bool>,
+    children: Element,
+) -> Element {
     rsx! {
-        button {
+        BaseButton {
             class: "primary-button",
-            id,
-            onclick: move |_| {
-                if let Some(on_press) = on_press {
-                    on_press(())
-                }
-            },
-            {children}
+            on_press,
+            disabled,
+            children,
         }
     }
 }

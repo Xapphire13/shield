@@ -57,18 +57,14 @@ pub fn OtpInput(
 
         let handle_paste = Callback::new(move |ev: ClipboardEvent| {
             if let Ok(clipboard_event) = ev.as_web_event().dyn_into::<web_sys::ClipboardEvent>() {
-                if let Ok(text) = clipboard_event
-                    .clipboard_data()
-                    .unwrap()
-                    .get_data("text")
-                {
+                if let Ok(text) = clipboard_event.clipboard_data().unwrap().get_data("text") {
                     let mut new_value = value;
                     let next_digit_pos = apply_code_update(&mut new_value, &text, digit_pos);
 
                     if next_digit_pos != digit_pos {
                         on_change(new_value);
 
-                        if next_digit_pos > 6 && new_value.iter().all(|digit| digit.is_numeric()) {
+                        if next_digit_pos > 6 && code_is_filled_out(new_value) {
                             if let Some(submit) = on_submit {
                                 submit(());
                             }
@@ -140,4 +136,8 @@ fn apply_code_update(current: &mut [char; 6], updates: &str, position: usize) ->
 fn focus_on_input(position: usize) {
     let next_input_id = format!("otp-digit-{position}");
     let _ = focus_element(&next_input_id);
+}
+
+pub fn code_is_filled_out(code: [char; 6]) -> bool {
+    code.iter().all(|digit| digit.is_numeric())
 }

@@ -12,6 +12,7 @@ pub async fn authenticate(
     State(AppState {
         config,
         refresh_token_store,
+        notification_dispatcher,
         ..
     }): State<AppState>,
     Json(request): Json<AuthenticateRequest>,
@@ -33,11 +34,30 @@ pub async fn authenticate(
     )?;
 
     if !totp.check_current(&request.otp_code)? {
+        tokio::spawn(async move {
+            if let Some(notifications_config) = config.notifications.as_ref() {
+                let payload = ntfy::Payload::new(notifications_config.topic.clone())
+                    .title("New login")
+                    .message("Failed");
+                let _ = notification_dispatcher.send(&payload).await.ok();
+            }
+        });
+
         return Err(AppError::InvalidOtpCode);
     }
 
     let token = create_auth_token(&config)?;
     let refresh_token = refresh_token_store.generate_new_token()?;
+
+    tokio::spawn(async move {
+        if let Some(notifications_config) = config.notifications.as_ref() {
+            let payload = ntfy::Payload::new(notifications_config.topic.clone())
+                .title("New login")
+                .message("Successful");
+
+            let _ = notification_dispatcher.send(&payload).await.ok();
+        }
+    });
 
     Ok(Json(AuthenticationResponse {
         token,

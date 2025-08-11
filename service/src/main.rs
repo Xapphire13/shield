@@ -27,6 +27,7 @@ struct AppState {
     client: Arc<UnifiProtectClient>,
     config: Arc<Config>,
     refresh_token_store: Arc<RefreshTokenStore>,
+    notification_dispatcher: Arc<ntfy::Dispatcher<ntfy::dispatcher::Async>>,
 }
 
 const PORT: i32 = 3000;
@@ -50,6 +51,11 @@ async fn main() {
         )),
         config: Arc::new(config),
         refresh_token_store: refresh_token_store.clone(),
+        notification_dispatcher: Arc::new(
+            ntfy::dispatcher::builder("https://ntfy.sh")
+                .build_async()
+                .unwrap(),
+        ),
     };
 
     let refresh_token_cleanup_task = std::thread::spawn(move || {

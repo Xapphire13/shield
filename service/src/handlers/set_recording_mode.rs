@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use anyhow::anyhow;
 use axum::{Json, extract::State, http::StatusCode};
 use futures::future::join_all;
@@ -8,7 +10,12 @@ use unifi_protect_client::models::camera::{CameraUpdateBuilder, RecordingSetting
 use crate::{AppState, app_error::AppError, handlers::AuthenticatedRequestContext};
 
 pub async fn set_recording_mode(
-    State(AppState { client, .. }): State<AppState>,
+    State(AppState {
+        client,
+        notification_dispatcher,
+        config,
+        ..
+    }): State<AppState>,
     _: AuthenticatedRequestContext,
     Json(input): Json<SetRecordingModeRequest>,
 ) -> Result<StatusCode, AppError> {
@@ -16,6 +23,38 @@ pub async fn set_recording_mode(
         "Setting recording mode to {:?} for cameras: {:?}",
         input.mode, input.camera_ids
     );
+
+    {
+        let client = client.clone();
+        let input = input.clone();
+        tokio::spawn(async move {
+            if let Some(notifications_config) = config.notifications.as_ref() {
+                let camera_names_by_id: HashMap<String, String> = client
+                    .list_cameras()
+                    .await
+                    .unwrap_or(Vec::new())
+                    .into_iter()
+                    .map(|camera| (camera.id, camera.name))
+                    .collect();
+                let payload = ntfy::Payload::new(notifications_config.topic.clone())
+                    .title(match input.mode {
+                        RecordingMode::Always => "Recording turned on",
+                        RecordingMode::Schedule => "Recording schedule changed",
+                        RecordingMode::Never => "Recording turned off",
+                    })
+                    .message(format!(
+                        "For cameras:\n\n{}",
+                        input
+                            .camera_ids
+                            .iter()
+                            .map(|id| camera_names_by_id.get(id).unwrap_or(id).clone())
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    ));
+                let _ = notification_dispatcher.send(&payload).await.ok();
+            }
+        });
+    }
 
     let futures = input.camera_ids.iter().map(|camera_id| {
         client.update_camera(

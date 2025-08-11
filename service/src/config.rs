@@ -11,6 +11,7 @@ pub struct Config {
     pub credentials: CredentialsConfig,
     pub otp: Option<OtpConfig>,
     pub jwt: Option<JwtConfig>,
+    pub notifications: Option<NotificationsConfig>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -27,6 +28,11 @@ pub struct OtpConfig {
 #[derive(Deserialize, Serialize)]
 pub struct JwtConfig {
     pub secret: String,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct NotificationsConfig {
+    pub topic: String,
 }
 
 impl OtpConfig {

@@ -1,10 +1,5 @@
-use axum::{
-    Json, debug_handler,
-    extract::State,
-};
-use shield_models::{
-    Camera, RecordingMode, RecordingSettings,
-};
+use axum::{Json, debug_handler, extract::State};
+use shield_models::{Camera, RecordingMode, RecordingSettings};
 use tracing::info;
 
 use crate::{AppState, app_error::AppError, handlers::AuthenticatedRequestContext};

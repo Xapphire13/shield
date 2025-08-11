@@ -78,11 +78,11 @@ sudo mkdir -p /var/lib/shield
 sudo chown $USER:$USER /var/lib/shield
 
 # Install the binary
-sudo cp ~/shield-service /usr/bin/shield-service
+sudo mv ~/shield-service /usr/bin/shield-service
 sudo chmod +x /usr/bin/shield-service
 
 # Install systemd service
-sudo cp ~/shield.service /etc/systemd/system/
+sudo mv ~/shield.service /etc/systemd/system/
 sudo systemctl daemon-reload
 
 # Enable and start the service
@@ -197,7 +197,7 @@ Or manually:
    scp target/release/shield-service ${PI_HOST}:~/
 
    # On target Raspberry Pi
-   sudo cp ~/shield-service /usr/bin/shield-service
+   sudo mv ~/shield-service /usr/bin/shield-service
    sudo systemctl start shield.service
    ```
 

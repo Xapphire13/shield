@@ -1,0 +1,12 @@
+[credentials]
+username = "YOUR_UNIFI_USERNAME"
+password = "YOUR_UNIFI_PASSWORD"
+
+# [otp]
+# secret = "GENERATED_ON_FIRST_RUN"
+#
+# [jwt]
+# secret = "GENERATED_ON_FIRST_RUN"
+#
+# [notifications]
+# topic = "YOUR_NTFY_TOPIC"

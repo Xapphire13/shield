@@ -1,0 +1,28 @@
+[Unit]
+Description=Shield Service
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=xapphire13
+Group=xapphire13
+WorkingDirectory=/var/lib/shield
+ExecStart=/usr/bin/shield-service
+Restart=always
+RestartSec=5
+Environment=RUST_LOG=trace
+
+# Optional: redirect logs
+StandardOutput=journal
+StandardError=journal
+
+# Optional: security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+#ProtectHome=true
+ReadWritePaths=/var/lib/shield
+
+[Install]
+WantedBy=multi-user.target

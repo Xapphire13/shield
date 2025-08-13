@@ -12,6 +12,8 @@ SERVICE_NAME="shield-service"
 INSTALL_DIR="/var/lib/shield"
 BIN_DIR="/usr/bin"
 SYSTEMD_DIR="/etc/systemd/system"
+WEB_DIR="/var/www/shield"
+NGINX_DIR="/etc/nginx/sites-available"
 
 # Colors for output
 RED='\033[0;31m'
@@ -43,7 +45,7 @@ show_usage() {
     echo ""
     echo "Options:"
     echo "  -h, --help         Show this help message"
-    echo "  --skip-build       Skip the build step (use existing binary)"
+    echo "  --skip-build       Skip the build step (use existing binaries)"
     echo ""
     echo "Examples:"
     echo "  $0 pi@192.168.1.100"
@@ -100,7 +102,7 @@ fi
 # Build the project (unless skipped)
 if [[ "$SKIP_BUILD" == false ]]; then
     print_step "Building shield-service..."
-    cargo build --release --bin shield-service
+    cargo build --release -p shield-service
 
     # Check if binary was created
     BINARY_PATH="target/release/$SERVICE_NAME"
@@ -110,11 +112,39 @@ if [[ "$SKIP_BUILD" == false ]]; then
     fi
 
     print_status "Binary built successfully: $BINARY_PATH"
+
+    # Build the web application
+    print_step "Building web application..."
+
+    # Check if dioxus-cli is installed
+    if ! command -v dx &> /dev/null; then
+        print_error "Dioxus CLI (dx) not found. Please install it first:"
+        print_error "cargo install dioxus-cli"
+        exit 1
+    fi
+
+    dx bundle --release -p shield-app
+
+    # Check if web build was created
+    WEB_BUILD_PATH="app/dist"
+    if [[ ! -d "$WEB_BUILD_PATH" ]]; then
+        print_error "Web build not found at $WEB_BUILD_PATH"
+        exit 1
+    fi
+
+    print_status "Web application built successfully: $WEB_BUILD_PATH"
 else
     print_status "Skipping build step"
     BINARY_PATH="target/release/$SERVICE_NAME"
+    WEB_BUILD_PATH="app/dist"
+
     if [[ ! -f "$BINARY_PATH" ]]; then
         print_error "Binary not found at $BINARY_PATH. Run without --skip-build first."
+        exit 1
+    fi
+
+    if [[ ! -d "$WEB_BUILD_PATH" ]]; then
+        print_error "Web build not found at $WEB_BUILD_PATH. Run without --skip-build first."
         exit 1
     fi
 fi
@@ -132,6 +162,10 @@ fi
 # Copy binary
 print_status "Copying binary..."
 scp "$BINARY_PATH" "$PI_HOST:~/"
+
+# Copy web application
+print_status "Copying web application..."
+scp -r "$WEB_BUILD_PATH" "$PI_HOST:~/shield-web"
 
 # Handle configuration file
 print_status "Checking configuration..."
@@ -161,6 +195,10 @@ fi
 print_status "Copying systemd service file..."
 scp deploy/shield.service "$PI_HOST:~/"
 
+# Copy nginx configuration
+print_status "Copying nginx configuration..."
+scp deploy/shield.conf "$PI_HOST:~/"
+
 # Install on target Raspberry Pi
 print_step "Installing on target Raspberry Pi..."
 
@@ -174,6 +212,43 @@ sudo chown \$USER:\$USER $INSTALL_DIR
 echo "Installing binary..."
 sudo mv ~/$SERVICE_NAME $BIN_DIR/$SERVICE_NAME
 sudo chmod +x $BIN_DIR/$SERVICE_NAME
+
+echo "Checking nginx installation..."
+if ! command -v nginx &> /dev/null; then
+    echo "Installing nginx..."
+    sudo apt update
+    sudo apt install -y nginx
+    sudo systemctl enable nginx
+    sudo systemctl start nginx
+else
+    echo "Nginx already installed"
+fi
+
+echo "Installing web application..."
+sudo mkdir -p $WEB_DIR
+sudo cp -r ~/shield-web/* $WEB_DIR/
+sudo chown -R www-data:www-data $WEB_DIR
+
+echo "Installing nginx configuration..."
+sudo mv ~/shield.conf $NGINX_DIR/
+sudo ln -sf $NGINX_DIR/shield.conf /etc/nginx/sites-enabled/
+
+# Remove default nginx site if it exists to avoid conflicts
+if [[ -f /etc/nginx/sites-enabled/default ]]; then
+    sudo rm /etc/nginx/sites-enabled/default
+    echo "Removed default nginx site"
+fi
+
+# Test nginx configuration before reloading
+if sudo nginx -t; then
+    sudo systemctl reload nginx
+    echo "Nginx configuration updated successfully"
+else
+    echo "ERROR: Nginx configuration test failed - rolling back"
+    sudo rm -f /etc/nginx/sites-enabled/shield.conf
+    sudo nginx -t && sudo systemctl reload nginx
+    exit 1
+fi
 
 echo "Installing systemd service..."
 sudo mv ~/shield.service $SYSTEMD_DIR/
@@ -196,6 +271,7 @@ sleep 2
 
 echo "Cleaning up temporary files..."
 rm -f ~/keep_existing_config
+rm -rf ~/shield-web
 
 echo "Installation completed!"
 EOF
@@ -215,6 +291,14 @@ sudo systemctl status shield.service --no-pager -l | head -10
 echo ""
 echo "Recent logs:"
 sudo journalctl -u shield.service -n 5 --no-pager
+
+echo ""
+echo "Nginx status:"
+if sudo systemctl is-active --quiet nginx; then
+    echo "✓ Nginx is running"
+else
+    echo "✗ Nginx is not running"
+fi
 
 # Check if service is listening on any ports
 echo ""
@@ -247,9 +331,13 @@ if ssh "$PI_HOST" "[[ -f ~/shield.config.toml ]] && grep -q 'YOUR_UNIFI_USERNAME
 fi
 
 print_status "Useful commands:"
-print_status "  Check status: ssh $PI_HOST 'sudo systemctl status shield.service'"
-print_status "  View logs:    ssh $PI_HOST 'sudo journalctl -u shield.service -f'"
-print_status "  Restart:      ssh $PI_HOST 'sudo systemctl restart shield.service'"
-print_status "  Stop:         ssh $PI_HOST 'sudo systemctl stop shield.service'"
+print_status "  Check service status: ssh $PI_HOST 'sudo systemctl status shield.service'"
+print_status "  Check nginx status:   ssh $PI_HOST 'sudo systemctl status nginx'"
+print_status "  View logs:            ssh $PI_HOST 'sudo journalctl -u shield.service -f'"
+print_status "  Restart service:      ssh $PI_HOST 'sudo systemctl restart shield.service'"
+print_status "  Restart nginx:        ssh $PI_HOST 'sudo systemctl restart nginx'"
+print_status ""
+print_status "Web interface should be available at:"
+print_status "  http://shield.home/ (after adding to hosts file)"
 print_status ""
 print_status "To redeploy quickly: $0 --skip-build $PI_HOST"

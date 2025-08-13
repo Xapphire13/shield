@@ -99,8 +99,8 @@ pub fn OtpInput(
                         let (handle_key_down, handle_paste) = create_handlers(position);
                         rsx! {
                             input {
+                                id: id.clone(),
                                 key: id,
-                                id,
                                 r#type: "text",
                                 maxlength: "1",
                                 "data-bwignore": "true",

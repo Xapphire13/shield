@@ -31,10 +31,10 @@ impl ApiClient {
         &self,
         request_builder: RequestBuilder,
     ) -> Result<Response, ApiError> {
-        let token = self
-            .storage
-            .get_access_token()
-            .ok_or(ApiError::TokenMissing)?;
+        let token = self.storage.get_access_token().ok_or_else(|| {
+            (self.on_unauthorized)();
+            ApiError::TokenMissing
+        })?;
 
         let request = request_builder
             .try_clone()

@@ -126,7 +126,7 @@ if [[ "$SKIP_BUILD" == false ]]; then
     dx bundle --release -p shield-app
 
     # Check if web build was created
-    WEB_BUILD_PATH="app/dist"
+    WEB_BUILD_PATH="target/dx/shield-app/release/web/public"
     if [[ ! -d "$WEB_BUILD_PATH" ]]; then
         print_error "Web build not found at $WEB_BUILD_PATH"
         exit 1
@@ -136,7 +136,7 @@ if [[ "$SKIP_BUILD" == false ]]; then
 else
     print_status "Skipping build step"
     BINARY_PATH="target/release/$SERVICE_NAME"
-    WEB_BUILD_PATH="app/dist"
+    WEB_BUILD_PATH="target/dx/shield-app/release/web/public"
 
     if [[ ! -f "$BINARY_PATH" ]]; then
         print_error "Binary not found at $BINARY_PATH. Run without --skip-build first."

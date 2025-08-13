@@ -57,7 +57,7 @@ dx bundle --release -p shield-app
 ```
 
 The compiled binary will be located at: `target/release/shield-service`
-The web application will be built in: `app/dist/`
+The web application will be built in: `target/dx/shield-app/release/web/public`
 
 ## Deployment
 
@@ -71,7 +71,7 @@ PI_HOST="pi@192.168.1.100"
 scp target/release/shield-service ${PI_HOST}:~/
 
 # Copy the web application
-scp -r app/dist/ ${PI_HOST}:~/shield-web/
+scp -r target/dx/shield-app/release/web/public ${PI_HOST}:~/shield-web/
 
 # Copy configuration template (if no config exists on target)
 scp deploy/shield.config.toml.template ${PI_HOST}:~/shield.config.toml
@@ -239,7 +239,7 @@ Or manually:
    ```bash
    # From build machine
    scp target/release/shield-service ${PI_HOST}:~/
-   scp -r app/dist/ ${PI_HOST}:~/shield-web/
+   scp -r target/dx/shield-app/release/web/public/ ${PI_HOST}:~/shield-web/
 
    # On target Raspberry Pi
    sudo mv ~/shield-service /usr/bin/shield-service

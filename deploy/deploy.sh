@@ -2,7 +2,7 @@
 
 # Shield Deployment Script
 # This script automates the deployment of Shield service to a target Raspberry Pi
-# Builds natively on ARM Ubuntu and deploys via SSH
+# Builds in a Podman container (no host Rust toolchain needed) and deploys via SSH
 
 set -e
 
@@ -14,6 +14,9 @@ BIN_DIR="/usr/bin"
 SYSTEMD_DIR="/etc/systemd/system"
 WEB_DIR="/var/www/shield"
 CADDY_CONF_DIR="/etc/caddy/conf.d"
+TARGET="aarch64-unknown-linux-gnu"
+BUILDER_IMAGE="shield-builder"
+CARGO_CACHE_VOLUME="shield-cargo-registry"
 
 # Colors for output
 RED='\033[0;31m'
@@ -51,7 +54,7 @@ show_usage() {
     echo "  $0 pi@192.168.1.100"
     echo "  $0 --skip-build pi@192.168.1.100"
     echo ""
-    echo "Note: This script builds natively on ARM Ubuntu and deploys to target Pi"
+    echo "Note: This script builds in a Podman container and deploys to the target Pi"
 }
 
 # Variables
@@ -100,43 +103,44 @@ if [[ ! -f "Cargo.toml" ]] || [[ ! -d "service" ]]; then
 fi
 
 # Build the project (unless skipped)
-if [[ "$SKIP_BUILD" == false ]]; then
-    print_step "Building shield-service..."
-    cargo build --release -p shield-service
+BINARY_PATH="target/$TARGET/release/$SERVICE_NAME"
+WEB_BUILD_PATH="target/dx/shield-app/release/web/public"
 
-    # Check if binary was created
-    BINARY_PATH="target/release/$SERVICE_NAME"
+if [[ "$SKIP_BUILD" == false ]]; then
+    # Build inside a Linux container matching the deploy target (Debian bookworm /
+    # glibc 2.36). On an Apple Silicon Mac the podman machine is aarch64 Linux, so
+    # the service is a native aarch64 build — no cross toolchain. The repo is
+    # bind-mounted, so artifacts land under target/ on the host just like a local
+    # build; the cargo registry is cached across runs.
+    if ! command -v podman &> /dev/null; then
+        print_error "podman not found. Install it with:"
+        print_error "  brew install podman && podman machine init && podman machine start"
+        exit 1
+    fi
+
+    print_step "Building builder image..."
+    podman build -t "$BUILDER_IMAGE" -f Containerfile.build .
+
+    print_step "Building shield-service and web application in container..."
+    podman run --rm \
+        -v "$PWD":/src \
+        -v "$CARGO_CACHE_VOLUME":/usr/local/cargo/registry \
+        "$BUILDER_IMAGE" \
+        bash -c "cargo build --release -p shield-service --target $TARGET && dx bundle --release -p shield-app"
+
     if [[ ! -f "$BINARY_PATH" ]]; then
         print_error "Binary not found at $BINARY_PATH"
         exit 1
     fi
-
     print_status "Binary built successfully: $BINARY_PATH"
 
-    # Build the web application
-    print_step "Building web application..."
-
-    # Check if dioxus-cli is installed
-    if ! command -v dx &> /dev/null; then
-        print_error "Dioxus CLI (dx) not found. Please install it first:"
-        print_error "cargo install dioxus-cli"
-        exit 1
-    fi
-
-    dx bundle --release -p shield-app
-
-    # Check if web build was created
-    WEB_BUILD_PATH="target/dx/shield-app/release/web/public"
     if [[ ! -d "$WEB_BUILD_PATH" ]]; then
         print_error "Web build not found at $WEB_BUILD_PATH"
         exit 1
     fi
-
     print_status "Web application built successfully: $WEB_BUILD_PATH"
 else
     print_status "Skipping build step"
-    BINARY_PATH="target/release/$SERVICE_NAME"
-    WEB_BUILD_PATH="target/dx/shield-app/release/web/public"
 
     if [[ ! -f "$BINARY_PATH" ]]; then
         print_error "Binary not found at $BINARY_PATH. Run without --skip-build first."

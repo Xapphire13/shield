@@ -14,3 +14,5 @@ target/
 # Runtime files
 shield.config.toml
 db/
+
+.claude/

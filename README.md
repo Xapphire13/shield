@@ -11,11 +11,12 @@ Shield is a workspace project consisting of multiple components:
 
 ## Prerequisites
 
-### Build Machine (ARM Ubuntu)
-- ARM-based Ubuntu system (or Raspberry Pi OS running on Raspberry Pi)
-- Rust toolchain installed
-- Dioxus CLI (`cargo install dioxus-cli`)
+### Build Machine
+- [Podman](https://podman.io/docs/installation) (on macOS: `brew install podman && podman machine init && podman machine start`)
 - SSH access to target Raspberry Pi
+
+The Rust toolchain and Dioxus CLI are **not** required on the build machine —
+they live in the build container defined by `Containerfile.build`.
 
 ### Target Device (Raspberry Pi)
 - Raspberry Pi running a systemd-based Linux distribution
@@ -25,38 +26,31 @@ Shield is a workspace project consisting of multiple components:
 
 ## Building
 
-### Setting up the Build Environment
-
-On your ARM Ubuntu build machine:
-
-```bash
-# Install Rust if not already installed
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-source ~/.cargo/env
-
-# Install build dependencies
-sudo apt update
-sudo apt install build-essential pkg-config libssl-dev
-
-# Install Dioxus CLI for building the web app
-cargo install dioxus-cli
-```
-
-### Building the Project
+Shield builds inside a Podman container based on `rust:1-bookworm`, which matches
+the Raspberry Pi's OS (Debian bookworm / glibc 2.36). On an Apple Silicon Mac the
+Podman machine runs aarch64 Linux, so the service compiles natively for
+`aarch64-unknown-linux-gnu` with no cross toolchain. The web app compiles to
+architecture-independent WASM.
 
 ```bash
 # Clone the repository
 git clone <repository-url>
 cd shield
 
-# Build the service for release
-cargo build --release -p shield-service
+# Build the builder image (first time, and whenever Containerfile.build changes)
+podman build -t shield-builder -f Containerfile.build .
 
-# Build the web application
-dx bundle --release -p shield-app
+# Build the service binary and web bundle inside the container.
+# The repo is bind-mounted, so artifacts land under target/ on the host; the
+# cargo registry is cached in a named volume across runs.
+podman run --rm \
+    -v "$PWD":/src \
+    -v shield-cargo-registry:/usr/local/cargo/registry \
+    shield-builder \
+    bash -c "cargo build --release -p shield-service --target aarch64-unknown-linux-gnu && dx bundle --release -p shield-app"
 ```
 
-The compiled binary will be located at: `target/release/shield-service`
+The compiled binary will be located at: `target/aarch64-unknown-linux-gnu/release/shield-service`
 The web application will be built in: `target/dx/shield-app/release/web/public`
 
 ## Deployment
@@ -68,7 +62,7 @@ The web application will be built in: `target/dx/shield-app/release/web/public`
 PI_HOST="pi@192.168.1.100"
 
 # Copy the binary
-scp target/release/shield-service ${PI_HOST}:~/
+scp target/aarch64-unknown-linux-gnu/release/shield-service ${PI_HOST}:~/
 
 # Copy the web application
 scp -r target/dx/shield-app/release/web/public ${PI_HOST}:~/shield-web/
@@ -219,10 +213,13 @@ The deployment script preserves existing configuration files. If you need to upd
 
 To update the service:
 
-1. Build the new version on your ARM Ubuntu build machine:
+1. Build the new version in the container (see [Building](#building)):
    ```bash
-   cargo build --release -p shield-service
-   dx bundle --release -p shield-app
+   podman run --rm \
+       -v "$PWD":/src \
+       -v shield-cargo-registry:/usr/local/cargo/registry \
+       shield-builder \
+       bash -c "cargo build --release -p shield-service --target aarch64-unknown-linux-gnu && dx bundle --release -p shield-app"
    ```
 
 2. Use the deployment script for automatic update:
@@ -239,7 +236,7 @@ Or manually:
 2. Copy the new files and restart:
    ```bash
    # From build machine
-   scp target/release/shield-service ${PI_HOST}:~/
+   scp target/aarch64-unknown-linux-gnu/release/shield-service ${PI_HOST}:~/
    scp -r target/dx/shield-app/release/web/public/ ${PI_HOST}:~/shield-web/
 
    # On target Raspberry Pi

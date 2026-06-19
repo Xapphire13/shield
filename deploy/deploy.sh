@@ -13,7 +13,7 @@ INSTALL_DIR="/var/lib/shield"
 BIN_DIR="/usr/bin"
 SYSTEMD_DIR="/etc/systemd/system"
 WEB_DIR="/var/www/shield"
-NGINX_DIR="/etc/nginx/sites-available"
+CADDY_CONF_DIR="/etc/caddy/conf.d"
 
 # Colors for output
 RED='\033[0;31m'
@@ -195,9 +195,9 @@ fi
 print_status "Copying systemd service file..."
 scp deploy/shield.service "$PI_HOST:~/"
 
-# Copy nginx configuration
-print_status "Copying nginx configuration..."
-scp deploy/shield.conf "$PI_HOST:~/"
+# Copy Caddy configuration
+print_status "Copying Caddy configuration..."
+scp deploy/shield.caddy "$PI_HOST:~/"
 
 # Install on target Raspberry Pi
 print_step "Installing on target Raspberry Pi..."
@@ -213,15 +213,16 @@ echo "Installing binary..."
 sudo mv ~/$SERVICE_NAME $BIN_DIR/$SERVICE_NAME
 sudo chmod +x $BIN_DIR/$SERVICE_NAME
 
-echo "Checking nginx installation..."
-if ! command -v nginx &> /dev/null; then
-    echo "Installing nginx..."
-    sudo apt update
-    sudo apt install -y nginx
-    sudo systemctl enable nginx
-    sudo systemctl start nginx
+echo "Checking caddy installation..."
+if ! command -v caddy &> /dev/null; then
+    echo "Installing caddy..."
+    sudo apt-get install -y debian-keyring debian-archive-keyring apt-transport-https curl
+    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
+    sudo apt-get update
+    sudo apt-get install -y caddy
 else
-    echo "Nginx already installed"
+    echo "Caddy already installed"
 fi
 
 echo "Installing web application..."
@@ -229,24 +230,22 @@ sudo mkdir -p $WEB_DIR
 sudo cp -r ~/shield-web/* $WEB_DIR/
 sudo chown -R www-data:www-data $WEB_DIR
 
-echo "Installing nginx configuration..."
-sudo mv ~/shield.conf $NGINX_DIR/
-sudo ln -sf $NGINX_DIR/shield.conf /etc/nginx/sites-enabled/
-
-# Remove default nginx site if it exists to avoid conflicts
-if [[ -f /etc/nginx/sites-enabled/default ]]; then
-    sudo rm /etc/nginx/sites-enabled/default
-    echo "Removed default nginx site"
+echo "Installing Caddy site config..."
+sudo mkdir -p $CADDY_CONF_DIR
+# ensure the main Caddyfile imports conf.d (idempotent)
+if ! sudo grep -q 'import /etc/caddy/conf.d/\*.caddy' /etc/caddy/Caddyfile; then
+    echo 'import /etc/caddy/conf.d/*.caddy' | sudo tee -a /etc/caddy/Caddyfile
 fi
+sudo mv ~/shield.caddy $CADDY_CONF_DIR/shield.caddy
 
-# Test nginx configuration before reloading
-if sudo nginx -t; then
-    sudo systemctl reload nginx
-    echo "Nginx configuration updated successfully"
+# validate before reloading; roll back the snippet on failure
+if sudo caddy validate --config /etc/caddy/Caddyfile; then
+    sudo systemctl reload caddy
+    echo "Caddy configuration updated successfully"
 else
-    echo "ERROR: Nginx configuration test failed - rolling back"
-    sudo rm -f /etc/nginx/sites-enabled/shield.conf
-    sudo nginx -t && sudo systemctl reload nginx
+    echo "ERROR: Caddy configuration test failed - rolling back"
+    sudo rm -f $CADDY_CONF_DIR/shield.caddy
+    sudo caddy validate --config /etc/caddy/Caddyfile && sudo systemctl reload caddy
     exit 1
 fi
 
@@ -293,11 +292,11 @@ echo "Recent logs:"
 sudo journalctl -u shield.service -n 5 --no-pager
 
 echo ""
-echo "Nginx status:"
-if sudo systemctl is-active --quiet nginx; then
-    echo "✓ Nginx is running"
+echo "Caddy status:"
+if sudo systemctl is-active --quiet caddy; then
+    echo "✓ Caddy is running"
 else
-    echo "✗ Nginx is not running"
+    echo "✗ Caddy is not running"
 fi
 
 # Check if service is listening on any ports
@@ -332,12 +331,12 @@ fi
 
 print_status "Useful commands:"
 print_status "  Check service status: ssh $PI_HOST 'sudo systemctl status shield.service'"
-print_status "  Check nginx status:   ssh $PI_HOST 'sudo systemctl status nginx'"
+print_status "  Check caddy status:   ssh $PI_HOST 'sudo systemctl status caddy'"
 print_status "  View logs:            ssh $PI_HOST 'sudo journalctl -u shield.service -f'"
 print_status "  Restart service:      ssh $PI_HOST 'sudo systemctl restart shield.service'"
-print_status "  Restart nginx:        ssh $PI_HOST 'sudo systemctl restart nginx'"
+print_status "  Reload caddy:         ssh $PI_HOST 'sudo systemctl reload caddy'"
 print_status ""
 print_status "Web interface should be available at:"
-print_status "  http://shield.home/ (after adding to hosts file)"
+print_status "  https://shield.home/ (after adding to hosts file)"
 print_status ""
 print_status "To redeploy quickly: $0 --skip-build $PI_HOST"

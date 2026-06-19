@@ -1,0 +1,38 @@
+shield.home {
+	tls internal
+
+	root * /var/www/shield
+
+	# /api/* -> backend on :3000, stripping the /api prefix
+	# (matches the old nginx trailing-slash `proxy_pass http://localhost:3000/;`)
+	handle_path /api/* {
+		reverse_proxy localhost:3000
+	}
+
+	handle {
+		encode gzip
+
+		# cross-origin isolation (SharedArrayBuffer) + security headers
+		header {
+			Cross-Origin-Embedder-Policy "require-corp"
+			Cross-Origin-Opener-Policy   "same-origin"
+			X-Frame-Options              "SAMEORIGIN"
+			X-Content-Type-Options       "nosniff"
+			Referrer-Policy              "strict-origin-when-cross-origin"
+		}
+
+		@assets path *.wasm *.wasm.br *.js *.mjs *.css
+		header @assets Cache-Control "public, max-age=31536000, immutable"
+		header @assets Access-Control-Allow-Origin "*"
+
+		@html path *.html
+		header @html Cache-Control "public, max-age=3600"
+
+		# serve foo.wasm.br / foo.js.br when the client accepts brotli
+		file_server {
+			precompressed br gzip
+		}
+
+		try_files {path} /index.html
+	}
+}

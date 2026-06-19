@@ -21,7 +21,7 @@ Shield is a workspace project consisting of multiple components:
 - Raspberry Pi running a systemd-based Linux distribution
 - Network connectivity
 - User account with sudo privileges
-- Nginx web server (`sudo apt install nginx`)
+- Caddy web server (install via the [official Caddy apt repo](https://caddyserver.com/docs/install#debian-ubuntu-raspbian))
 
 ## Building
 
@@ -79,8 +79,8 @@ scp deploy/shield.config.toml.template ${PI_HOST}:~/shield.config.toml
 # Copy systemd service file
 scp deploy/shield.service ${PI_HOST}:~/
 
-# Copy nginx configuration
-scp deploy/shield.conf ${PI_HOST}:~/
+# Copy Caddy configuration
+scp deploy/shield.caddy ${PI_HOST}:~/
 ```
 
 ### 2. Install on Target Raspberry Pi
@@ -92,9 +92,7 @@ SSH into your target Raspberry Pi and run the following commands:
 sudo mkdir -p /var/lib/shield
 sudo chown $USER:$USER /var/lib/shield
 
-# Install nginx if not already installed
-sudo apt update
-sudo apt install -y nginx
+# Install Caddy if not already installed (see https://caddyserver.com/docs/install)
 
 # Install the binary
 sudo mv ~/shield-service /usr/bin/shield-service
@@ -105,10 +103,13 @@ sudo mkdir -p /var/www/shield
 sudo cp -r ~/shield-web/* /var/www/shield/
 sudo chown -R www-data:www-data /var/www/shield
 
-# Install nginx configuration
-sudo mv ~/shield.conf /etc/nginx/sites-available/
-sudo ln -sf /etc/nginx/sites-available/shield.conf /etc/nginx/sites-enabled/
-sudo nginx -t && sudo systemctl reload nginx
+# Install Caddy configuration
+sudo mkdir -p /etc/caddy/conf.d
+# ensure the main Caddyfile imports conf.d (one-time)
+grep -q 'import /etc/caddy/conf.d/\*.caddy' /etc/caddy/Caddyfile || \
+    echo 'import /etc/caddy/conf.d/*.caddy' | sudo tee -a /etc/caddy/Caddyfile
+sudo mv ~/shield.caddy /etc/caddy/conf.d/shield.caddy
+sudo caddy validate --config /etc/caddy/Caddyfile && sudo systemctl reload caddy
 
 # Install systemd service
 sudo mv ~/shield.service /etc/systemd/system/
@@ -128,8 +129,8 @@ sudo systemctl status shield.service
 # View logs
 sudo journalctl -u shield.service -f
 
-# Check nginx status
-sudo systemctl status nginx
+# Check Caddy status
+sudo systemctl status caddy
 ```
 
 ## Automated Deployment
@@ -147,13 +148,13 @@ chmod +x deploy/deploy.sh
 The script will:
 1. Build the backend service and web application on your build machine
 2. Copy all files to the target Raspberry Pi via SSH
-3. Install and configure the service and nginx
+3. Install and configure the service and Caddy
 4. Start both services and verify they're running
 
 ## Web Interface Access
 
 After successful deployment, the web interface will be available at
-`http://shield.home/` (requires adding hostname to your local hosts file)
+`https://shield.home/` (requires adding hostname to your local hosts file)
 
 To set up hostname access on your local machine:
 ```bash
@@ -253,15 +254,18 @@ Or manually:
 ### Log Locations
 
 - **Service logs**: `sudo journalctl -u shield.service`
-- **Nginx access logs**: `/var/log/nginx/access.log`
-- **Nginx error logs**: `/var/log/nginx/error.log`
+- **Caddy logs**: `sudo journalctl -u caddy`
 - **System logs**: `/var/log/syslog`
 
 ### Configuration Files
 
 - **Service config**: `~/shield.config.toml`
-- **Nginx config**: `/etc/nginx/sites-available/shield.conf`
+- **Caddy config**: `/etc/caddy/conf.d/shield.caddy`
 - **Systemd service**: `/etc/systemd/system/shield.service`
+
+> **Note**: The site uses Caddy's internal CA (`tls internal`). Client devices
+> must trust Caddy's local root CA, found on the Pi at
+> `/var/lib/caddy/.local/share/caddy/pki/authorities/local/root.crt`.
 
 ## Development
 

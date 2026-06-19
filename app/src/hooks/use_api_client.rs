@@ -7,7 +7,7 @@ use crate::{api::ApiClient, utils::get_hostname};
 #[cfg(debug_assertions)]
 pub const BASE_URL: &str = "http://{}:3000";
 #[cfg(not(debug_assertions))]
-pub const BASE_URL: &str = "http://{}/api";
+pub const BASE_URL: &str = "https://{}/api";
 
 pub fn use_api_client_provider(on_unauthorized: impl Fn() + 'static) {
     use_context_provider(|| {

@@ -1,0 +1,14 @@
+# Build environment for Shield's deploy artifacts (service binary + web bundle).
+# Base matches the deploy target (Debian 12 bookworm, glibc 2.36) so the service
+# binary runs on the Pi. On an Apple Silicon Mac the podman machine is aarch64
+# Linux, so building here is a native aarch64 compile for the service — no cross
+# toolchain. The web app compiles to architecture-independent WASM.
+FROM docker.io/library/rust:1-bookworm
+
+# wasm target for the Dioxus web app
+RUN rustup target add wasm32-unknown-unknown
+
+# Dioxus CLI for bundling the web app (matches dioxus 0.6.x in the workspace)
+RUN cargo install dioxus-cli --locked --version "^0.6.1"
+
+WORKDIR /src

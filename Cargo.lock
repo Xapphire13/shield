@@ -3272,15 +3272,16 @@ checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
 
 [[package]]
 name = "unifi-protect-client"
-version = "0.2.2"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f0273a8d3878d8da61389aeef3da48a0fe294b17af6e408a186f29e8fd685ac1"
+checksum = "732ca2941c0b489ad84bb74843b4a2d629bb860495dde557d12e716ae933e725"
 dependencies = [
  "reqwest",
  "secrecy",
  "serde",
  "serde_json",
  "thiserror 2.0.12",
+ "tracing",
  "typesafe_builder",
 ]
 

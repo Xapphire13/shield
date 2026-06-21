@@ -12,10 +12,6 @@ pub struct ApiClient {
 
 impl ApiClient {
     pub fn new(base_url: String, on_unauthorized: impl Fn() + 'static) -> Self {
-        // NOTE: don't set a custom User-Agent here. It's a forbidden header in
-        // the browser Fetch spec, so doing so triggers a CORS preflight that
-        // lists `user-agent` in Access-Control-Request-Headers and gets
-        // rejected by the server. The browser sets User-Agent itself anyway.
         let client = reqwest::Client::new();
 
         Self {

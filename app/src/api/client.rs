@@ -3,8 +3,6 @@ use shield_models::{AuthenticationResponse, RefreshRequest};
 
 use crate::{storage::TokenStore, types::ApiError};
 
-static APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
-
 pub struct ApiClient {
     client: reqwest::Client,
     base_url: String,
@@ -14,10 +12,7 @@ pub struct ApiClient {
 
 impl ApiClient {
     pub fn new(base_url: String, on_unauthorized: impl Fn() + 'static) -> Self {
-        let client = reqwest::Client::builder()
-            .user_agent(APP_USER_AGENT)
-            .build()
-            .unwrap();
+        let client = reqwest::Client::new();
 
         Self {
             base_url,

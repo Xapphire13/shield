@@ -100,7 +100,7 @@ pub fn OtpInput(
                         rsx! {
                             input {
                                 id: id.clone(),
-                                key: id,
+                                key: "{id}",
                                 r#type: "text",
                                 maxlength: "1",
                                 "data-bwignore": "true",

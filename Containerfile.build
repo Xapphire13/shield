@@ -8,7 +8,7 @@ FROM docker.io/library/rust:1-bookworm
 # wasm target for the Dioxus web app
 RUN rustup target add wasm32-unknown-unknown
 
-# Dioxus CLI for bundling the web app (matches dioxus 0.6.x in the workspace)
-RUN cargo install dioxus-cli --locked --version "^0.6.1"
+# Dioxus CLI for bundling the web app (matches dioxus 0.7.x in the workspace)
+RUN cargo install dioxus-cli --locked --version "^0.7.9"
 
 WORKDIR /src

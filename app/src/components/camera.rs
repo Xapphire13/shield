@@ -4,7 +4,7 @@ pub use recording_indicator::RecordingIndicator;
 
 use dioxus::prelude::*;
 
-use crate::{components::ui::DisclosureRow, utils::RecordingModeExtensions};
+use crate::{components::ui::SelectableRow, utils::RecordingModeExtensions};
 
 #[component]
 pub fn Camera(
@@ -16,7 +16,7 @@ pub fn Camera(
     let id = camera.id.clone();
 
     rsx! {
-        DisclosureRow {
+        SelectableRow {
             header: camera.name,
             sub_header: "Recording mode: {recording_mode}",
             selected,

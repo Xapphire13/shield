@@ -1,7 +1,7 @@
 pub mod buttons;
-pub mod disclosure_row;
 pub mod modal;
+pub mod selectable_row;
 
 pub use buttons::*;
-pub use disclosure_row::*;
 pub use modal::*;
+pub use selectable_row::*;

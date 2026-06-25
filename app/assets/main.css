@@ -21,7 +21,7 @@ body {
     padding: 16px;
 }
 
-.disclosure-row {
+.selectable-row {
     position: relative;
     display: flex;
     background-color: #2a2f3e;
@@ -30,15 +30,15 @@ body {
     cursor: pointer;
 }
 
-.disclosure-row:hover {
+.selectable-row:hover {
     background-color: #535e7a;
 }
 
-.disclosure-row[data-selected="true"] {
+.selectable-row[data-selected="true"] {
     background-color: #404962;
 }
 
-.disclosure-row[data-selected="true"]::before {
+.selectable-row[data-selected="true"]::before {
     content: "";
     position: absolute;
     top: 0;
@@ -48,21 +48,21 @@ body {
     background-color: #b049ff;
 }
 
-.disclosure-row + .disclosure-row {
+.selectable-row + .selectable-row {
     border-top: 1px solid #383f52;
 }
 
-.disclosure-row__content {
+.selectable-row__content {
     display: flex;
     flex-direction: column;
     flex-grow: 1;
 }
 
-.disclosure-row__header {
+.selectable-row__header {
     font-weight: bold;
 }
 
-.disclosure-row__sub-header {
+.selectable-row__sub-header {
     font-size: 0.8rem;
     font-weight: lighter;
     color: #b6b6b6;

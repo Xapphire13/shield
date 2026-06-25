@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 
 #[component]
-pub fn DisclosureRow(
+pub fn SelectableRow(
     header: String,
     sub_header: String,
     after: Element,
@@ -10,14 +10,14 @@ pub fn DisclosureRow(
 ) -> Element {
     rsx! {
         div {
-            class: "disclosure-row",
+            class: "selectable-row",
             "data-selected": selected,
             onclick: move |event| on_click.call(event),
 
-            div { class: "disclosure-row__content",
+            div { class: "selectable-row__content",
                 div {
-                    div { class: "disclosure-row__header", {header} }
-                    div { class: "disclosure-row__sub-header", {sub_header} }
+                    div { class: "selectable-row__header", {header} }
+                    div { class: "selectable-row__sub-header", {sub_header} }
                 }
             }
 

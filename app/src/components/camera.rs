@@ -1,5 +1,7 @@
+pub mod camera_actions;
 pub mod recording_indicator;
 
+pub use camera_actions::CameraActions;
 pub use recording_indicator::RecordingIndicator;
 
 use dioxus::prelude::*;

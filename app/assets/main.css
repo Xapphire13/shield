@@ -107,9 +107,12 @@ body {
 }
 
 .camera-actions {
+    --bottom-gap: 24px;
+    --shadow-reach: 16px;
+
     position: fixed;
     left: 50%;
-    bottom: 24px;
+    bottom: var(--bottom-gap);
     display: flex;
     align-items: center;
     gap: 8px;
@@ -120,7 +123,9 @@ body {
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
     opacity: 0;
     pointer-events: none;
-    transform: translate(-50%, calc(100% + 40px));
+    /* Hidden: slide fully below the viewport — the bar's own height (100%),
+       plus the bottom gap and the upward reach of its shadow. */
+    transform: translate(-50%, calc(100% + var(--bottom-gap) + var(--shadow-reach)));
     transition:
         transform 0.25s ease,
         opacity 0.25s ease;

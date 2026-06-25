@@ -1,3 +1,9 @@
+:root {
+    /* Stacking order for overlapping fixed-position layers (higher wins). */
+    --z-floating-actions: 100;
+    --z-modal: 200;
+}
+
 html {
     box-sizing: border-box;
 }
@@ -21,7 +27,8 @@ body {
     padding: 16px;
 }
 
-.disclosure-row {
+.selectable-row {
+    position: relative;
     display: flex;
     background-color: #2a2f3e;
     align-items: center;
@@ -29,25 +36,39 @@ body {
     cursor: pointer;
 }
 
-.disclosure-row:hover {
+.selectable-row:hover {
     background-color: #535e7a;
 }
 
-.disclosure-row + .disclosure-row {
+.selectable-row[data-selected="true"] {
+    background-color: #404962;
+}
+
+.selectable-row[data-selected="true"]::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 4px;
+    background-color: #b049ff;
+}
+
+.selectable-row + .selectable-row {
     border-top: 1px solid #383f52;
 }
 
-.disclosure-row__content {
+.selectable-row__content {
     display: flex;
     flex-direction: column;
     flex-grow: 1;
 }
 
-.disclosure-row__header {
+.selectable-row__header {
     font-weight: bold;
 }
 
-.disclosure-row__sub-header {
+.selectable-row__sub-header {
     font-size: 0.8rem;
     font-weight: lighter;
     color: #b6b6b6;
@@ -91,6 +112,44 @@ body {
     gap: 8px;
 }
 
+.camera-actions {
+    --bottom-gap: 24px;
+    --shadow-reach: 16px;
+
+    position: fixed;
+    left: 50%;
+    bottom: var(--bottom-gap);
+    z-index: var(--z-floating-actions);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    background-color: #1c2029;
+    border: 1px solid #383f52;
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    opacity: 0;
+    pointer-events: none;
+    /* Hidden: slide fully below the viewport — the bar's own height (100%),
+       plus the bottom gap and the upward reach of its shadow. */
+    transform: translate(-50%, calc(100% + var(--bottom-gap) + var(--shadow-reach)));
+    transition:
+        transform 0.25s ease,
+        opacity 0.25s ease;
+}
+
+.camera-actions[data-visible="true"] {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translate(-50%, 0);
+}
+
+.camera-actions__separator {
+    align-self: stretch;
+    width: 1px;
+    background-color: #383f52;
+}
+
 .icon-button {
     background: #535e7a;
     border: 1px solid #616e8e;
@@ -122,6 +181,7 @@ body {
     justify-content: center;
     align-items: center;
     background-color: rgba(0, 0, 0, 0.5);
+    z-index: var(--z-modal);
 }
 
 .modal {

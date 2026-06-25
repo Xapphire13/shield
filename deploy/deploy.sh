@@ -42,6 +42,36 @@ print_step() {
     echo -e "${BLUE}[STEP]${NC} $1"
 }
 
+# Memory (in MiB) to give the podman machine while building. The native Pi
+# binary + web bundle build is memory-hungry, so we temporarily bump the VM to
+# 8GB and restore the original value when we're done.
+PODMAN_MEMORY_MB=8192
+
+# Tracks whether this script started the podman machine, so we only stop (and
+# restore the memory of) a machine we ourselves brought up — an already-running
+# machine is left untouched. PODMAN_ORIGINAL_MEMORY holds the MiB value to put
+# back on stop.
+PODMAN_MACHINE_STARTED=false
+PODMAN_ORIGINAL_MEMORY=""
+
+# Stop the podman machine if we started it, restoring its original memory.
+# Registered as an EXIT/INT/TERM trap (below) so it runs even when the build
+# fails under `set -e` or is Ctrl-C'd.
+stop_podman_machine() {
+    if [[ "$PODMAN_MACHINE_STARTED" == true ]]; then
+        print_step "Stopping podman machine..."
+        podman machine stop || print_warning "Failed to stop podman machine"
+        PODMAN_MACHINE_STARTED=false
+
+        if [[ -n "$PODMAN_ORIGINAL_MEMORY" ]]; then
+            print_step "Restoring podman machine memory to ${PODMAN_ORIGINAL_MEMORY}MiB..."
+            podman machine set --memory "$PODMAN_ORIGINAL_MEMORY" \
+                || print_warning "Failed to restore podman machine memory"
+        fi
+    fi
+}
+trap stop_podman_machine EXIT INT TERM
+
 # Function to show usage
 show_usage() {
     echo "Usage: $0 [OPTIONS] <pi_host>"
@@ -116,6 +146,24 @@ if [[ "$SKIP_BUILD" == false ]]; then
         print_error "podman not found. Install it with:"
         print_error "  brew install podman && podman machine init && podman machine start"
         exit 1
+    fi
+
+    # Bring up the podman machine (the Linux VM the build runs in). `podman info`
+    # succeeds only when a container backend is reachable; on a native Linux host
+    # it always succeeds, so this is a no-op there. Claim ownership before
+    # starting so an interrupt mid-start still triggers cleanup via the trap.
+    if ! podman info >/dev/null 2>&1; then
+        # Capture the machine's current memory so the trap can restore it, then
+        # bump to PODMAN_MEMORY_MB. `set` only takes effect while the machine is
+        # stopped, so this must happen before `machine start`.
+        PODMAN_ORIGINAL_MEMORY=$(podman machine inspect --format '{{.Resources.Memory}}' 2>/dev/null || true)
+
+        print_step "Setting podman machine memory to ${PODMAN_MEMORY_MB}MiB..."
+        podman machine set --memory "$PODMAN_MEMORY_MB"
+
+        print_step "Starting podman machine..."
+        PODMAN_MACHINE_STARTED=true
+        podman machine start
     fi
 
     print_step "Building builder image..."

@@ -6,8 +6,8 @@ use crate::components::ui::{
 
 #[derive(Clone, PartialEq)]
 pub enum ConfirmationModalType {
-    ConfirmToggleOn,
-    ConfirmToggleOff,
+    ConfirmToggleOn(Vec<String>),
+    ConfirmToggleOff(Vec<String>),
     None,
 }
 
@@ -23,10 +23,10 @@ pub fn ConfirmationModal(
             ModalHeader { "Are you sure?" }
             ModalBody {
                 match confirmation_type {
-                    ConfirmationModalType::ConfirmToggleOn => {
+                    ConfirmationModalType::ConfirmToggleOn(_) => {
                         "This will enable recording on the following cameras:"
                     }
-                    ConfirmationModalType::ConfirmToggleOff => {
+                    ConfirmationModalType::ConfirmToggleOff(_) => {
                         "This will disabled recording on the following cameras:"
                     }
                     _ => "",

@@ -1,3 +1,9 @@
+:root {
+    /* Stacking order for overlapping fixed-position layers (higher wins). */
+    --z-floating-actions: 100;
+    --z-modal: 200;
+}
+
 html {
     box-sizing: border-box;
 }
@@ -113,6 +119,7 @@ body {
     position: fixed;
     left: 50%;
     bottom: var(--bottom-gap);
+    z-index: var(--z-floating-actions);
     display: flex;
     align-items: center;
     gap: 8px;
@@ -174,6 +181,7 @@ body {
     justify-content: center;
     align-items: center;
     background-color: rgba(0, 0, 0, 0.5);
+    z-index: var(--z-modal);
 }
 
 .modal {

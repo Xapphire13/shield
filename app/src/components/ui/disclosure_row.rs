@@ -1,10 +1,18 @@
 use dioxus::prelude::*;
-use dioxus_feather_icons::icon;
 
 #[component]
-pub fn DisclosureRow(header: String, sub_header: String, after: Element) -> Element {
+pub fn DisclosureRow(
+    header: String,
+    sub_header: String,
+    after: Element,
+    #[props(default)] selected: bool,
+    on_click: Callback<MouseEvent>,
+) -> Element {
     rsx! {
-        div { class: "disclosure-row",
+        div {
+            class: "disclosure-row",
+            "data-selected": selected,
+            onclick: move |event| on_click.call(event),
 
             div { class: "disclosure-row__content",
                 div {
@@ -14,8 +22,6 @@ pub fn DisclosureRow(header: String, sub_header: String, after: Element) -> Elem
             }
 
             div { {after} }
-
-            div { {icon!(chevron_right)} }
         }
     }
 }

@@ -4,41 +4,50 @@ use crate::{
     components::{BottomToolbar, MainView},
     hooks::use_api_client_provider,
     pages::{Home, Login, Map, NotFound},
-    utils::navigate_to,
 };
 
 #[derive(Routable, Clone)]
 #[rustfmt::skip]
 pub enum Route {
-    // Primary views share the bottom toolbar via the `MainShell` layout.
-    #[layout(MainShell)]
-        #[route("/")]
-        Home,
-        #[route("/map")]
-        Map,
-    #[end_layout]
-    #[route("/login")]
-    Login,
-    #[route("/:..route")]
-    NotFound { route: Vec<String> },
+    // `AppRoot` provides the API client to every route from inside the
+    // `Router`, so router-aware navigation is available app-wide.
+    #[layout(AppRoot)]
+        // Primary views share the bottom toolbar via the `MainShell` layout.
+        #[layout(MainShell)]
+            #[route("/")]
+            Home,
+            #[route("/map")]
+            Map,
+        #[end_layout]
+        #[route("/login")]
+        Login,
+        #[route("/:..route")]
+        NotFound { route: Vec<String> },
 }
 
 const MAIN_CSS: Asset = asset!("/assets/main.css");
 
 #[component]
 pub fn App() -> Element {
-    let handle_on_unauthorized = move || {
-        // The API client lives here, above the `Router`, so that `Login` and the
-        // main views all share it. That means this callback has no router context
-        // and can't use `navigator()` — hence the raw location-based redirect.
-        let _ = navigate_to("/login");
-    };
-    use_api_client_provider(handle_on_unauthorized);
-
     rsx! {
         document::Link { rel: "stylesheet", href: MAIN_CSS }
 
         Router::<Route> {}
+    }
+}
+
+/// Root layout for every route. Provides the shared API client and, because it
+/// renders inside the `Router`, lets the unauthorized handler redirect via the
+/// router navigator.
+#[component]
+fn AppRoot() -> Element {
+    let nav = navigator();
+    use_api_client_provider(move || {
+        nav.replace(Route::Login);
+    });
+
+    rsx! {
+        Outlet::<Route> {}
     }
 }
 

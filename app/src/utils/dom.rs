@@ -15,12 +15,6 @@ pub fn reload_page() -> Result<(), &'static str> {
         .ok_or("Failed to reload page")
 }
 
-pub fn navigate_to(url: &str) -> Result<(), &'static str> {
-    window()
-        .and_then(|w| w.location().replace(url).ok())
-        .ok_or("Failed to navigate")
-}
-
 pub fn get_hostname() -> Result<String, &'static str> {
     window()
         .and_then(|w| w.location().hostname().ok())

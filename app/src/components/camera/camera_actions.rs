@@ -11,7 +11,7 @@ pub fn CameraActions(
     on_dismiss: Callback,
 ) -> Element {
     rsx! {
-        div { class: "camera-actions", "data-visible": visible, inert: !visible,
+        div { class: "camera-actions", "data-visible": visible, inert: (!visible).then_some(true),
             IconButton {
                 icon: icon!(video),
                 color: ButtonColor::Danger,

@@ -6,7 +6,7 @@ use dioxus::prelude::*;
 #[component]
 pub fn MapView() -> Element {
     rsx! {
-        div { class: "map-view",
+        div { class: "primary-view map-view",
             svg {
                 class: "map-canvas",
                 xmlns: "http://www.w3.org/2000/svg",

@@ -24,12 +24,16 @@ body {
     margin: 0;
 }
 
-.home-container {
-    min-height: 100vh;
+/* Shared layout for the full-screen primary views (list, map): full width,
+   padded, with clearance for the fixed bottom toolbar. */
+.primary-view {
     width: 100vw;
     padding: 16px;
-    /* Keep the last rows clear of the fixed bottom toolbar. */
     padding-bottom: calc(16px + var(--bottom-toolbar-height));
+}
+
+.home-container {
+    min-height: 100vh;
 }
 
 .selectable-row {
@@ -323,7 +327,7 @@ ul {
     font-size: 0.75rem;
 }
 
-.bottom-toolbar__item[data-active="true"] {
+.bottom-toolbar__item--active {
     color: #b049ff;
 }
 
@@ -334,10 +338,6 @@ ul {
 .map-view {
     position: relative;
     height: 100vh;
-    width: 100vw;
-    padding: 16px;
-    /* Keep the canvas clear of the fixed bottom toolbar. */
-    padding-bottom: calc(16px + var(--bottom-toolbar-height));
 }
 
 .map-canvas {

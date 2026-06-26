@@ -1,9 +1,9 @@
 use dioxus::prelude::*;
 
 use crate::{
-    components::{BottomToolbar, MainView},
+    components::{BottomToolbar, CameraList, MapView},
     hooks::use_api_client_provider,
-    pages::{Home, Login, Map, NotFound},
+    pages::{Login, NotFound},
 };
 
 #[derive(Routable, Clone)]
@@ -15,9 +15,9 @@ pub enum Route {
         // Primary views share the bottom toolbar via the `MainShell` layout.
         #[layout(MainShell)]
             #[route("/")]
-            Home,
+            CameraList,
             #[route("/map")]
-            Map,
+            MapView,
         #[end_layout]
         #[route("/login")]
         Login,
@@ -55,23 +55,9 @@ fn AppRoot() -> Element {
 /// `Outlet` with a persistent bottom toolbar for switching between them.
 #[component]
 fn MainShell() -> Element {
-    let view = match use_route::<Route>() {
-        Route::Map => MainView::Map,
-        _ => MainView::List,
-    };
-    let nav = navigator();
-
     rsx! {
         Outlet::<Route> {}
 
-        BottomToolbar {
-            view,
-            on_change: move |next| {
-                match next {
-                    MainView::List => nav.push(Route::Home),
-                    MainView::Map => nav.push(Route::Map),
-                };
-            },
-        }
+        BottomToolbar {}
     }
 }

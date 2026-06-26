@@ -59,7 +59,7 @@ pub fn CameraList() -> Element {
     let tags = tags; // Remove mutability
 
     rsx! {
-        div { class: "home-container",
+        div { class: "primary-view home-container",
             if loading {
                 "Loading..."
             }

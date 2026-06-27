@@ -200,12 +200,12 @@ pub fn use_map(map_id: String) -> UseMapResult {
     };
 
     let place_camera = use_callback({
-        let commit = commit.clone();
-        move |camera: MapCamera| commit.clone()(MapEdit::AddCamera(camera))
+        let mut commit = commit.clone();
+        move |camera: MapCamera| commit(MapEdit::AddCamera(camera))
     });
 
     let move_camera = use_callback({
-        let commit = commit.clone();
+        let mut commit = commit.clone();
         move |(camera_id, to): (String, Point)| {
             let Some(from) = map()
                 .and_then(|m| m.cameras.into_iter().find(|c| c.camera_id == camera_id))
@@ -218,7 +218,7 @@ pub fn use_map(map_id: String) -> UseMapResult {
                 return;
             }
 
-            commit.clone()(MapEdit::MoveCamera {
+            commit(MapEdit::MoveCamera {
                 camera_id,
                 from,
                 to,
@@ -227,7 +227,7 @@ pub fn use_map(map_id: String) -> UseMapResult {
     });
 
     let aim_camera = use_callback({
-        let commit = commit.clone();
+        let mut commit = commit.clone();
         move |(camera_id, to): (String, FieldOfView)| {
             let Some(from) = map()
                 .and_then(|m| m.cameras.into_iter().find(|c| c.camera_id == camera_id))
@@ -240,7 +240,7 @@ pub fn use_map(map_id: String) -> UseMapResult {
                 return;
             }
 
-            commit.clone()(MapEdit::UpdateFov {
+            commit(MapEdit::UpdateFov {
                 camera_id,
                 from,
                 to,
@@ -249,7 +249,7 @@ pub fn use_map(map_id: String) -> UseMapResult {
     });
 
     let remove_camera = use_callback({
-        let commit = commit.clone();
+        let mut commit = commit.clone();
         move |camera_id: String| {
             let Some(camera) =
                 map().and_then(|m| m.cameras.into_iter().find(|c| c.camera_id == camera_id))
@@ -257,7 +257,7 @@ pub fn use_map(map_id: String) -> UseMapResult {
                 return;
             };
 
-            commit.clone()(MapEdit::RemoveCamera(camera))
+            commit(MapEdit::RemoveCamera(camera))
         }
     });
 

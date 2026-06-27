@@ -4,7 +4,7 @@ use shield_models::{FieldOfView, MapCamera, Point};
 use crate::components::map::map_camera::MapCameraMarker;
 
 /// Minimum / maximum zoom (screen px per logical cm). Panning is intentionally
-/// unconstrained (see issue #11), but zoom is clamped to keep the canvas usable.
+/// unconstrained, but zoom is clamped to keep the canvas usable.
 const MIN_ZOOM: f64 = 0.02;
 const MAX_ZOOM: f64 = 5.0;
 
@@ -16,8 +16,8 @@ const WHEEL_ZOOM_STEP: f64 = 0.0015;
 ///
 /// This is the single source of truth for what part of the map is on screen and
 /// is deliberately small and self-describing so later rounds can build on it
-/// directly — #6 (manipulation) needs screen->world for hit-testing/dragging and
-/// #8 (minimap) needs the world rect currently visible. Both can be derived from
+/// directly — interactive manipulation needs screen->world for hit-testing/dragging,
+/// and a minimap needs the world rect currently visible. Both can be derived from
 /// these three fields plus the canvas size.
 #[derive(Clone, Copy, PartialEq, Debug)]
 struct Viewport {
@@ -89,8 +89,8 @@ enum Gesture {
 /// Mock cameras spread across a ~2000x1500 cm area with varied directions and
 /// ranges, so the canvas renders something meaningful.
 ///
-/// PLACEHOLDER: this is hardcoded mock data. Round 3 (#6) wires this view to the
-/// real `use_map` hook (PR #3) for live map data; remove this then.
+/// PLACEHOLDER: hardcoded mock data until this view is wired to the `use_map`
+/// hook for live map data; remove this then.
 fn mock_cameras() -> Vec<MapCamera> {
     vec![
         MapCamera {

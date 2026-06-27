@@ -1,7 +1,40 @@
 :root {
     /* Stacking order for overlapping fixed-position layers (higher wins). */
+    --z-bottom-toolbar: 90;
     --z-floating-actions: 100;
     --z-modal: 200;
+
+    /* Material Design bottom-navigation height. */
+    --bottom-toolbar-height: 56px;
+
+    /* Surfaces, from the app backdrop up to the most-raised panels. */
+    --color-background: #0f1116;
+    --color-surface-sunken: #0b0d12;
+    --color-surface: #1c2029;
+    --color-surface-row: #2a2f3e;
+    --color-surface-selected: #404962;
+    --color-surface-highlight: #535e7a;
+
+    /* Borders. */
+    --color-border: #383f52;
+    --color-border-strong: #616e8e;
+
+    /* Text. */
+    --color-text: #ffffff;
+    --color-text-muted: #b6b6b6;
+
+    /* Accent (interactive / selected emphasis). */
+    --color-accent: #b049ff;
+    --color-accent-border: #a837ff;
+
+    /* Status. */
+    --color-danger: #fa486b;
+    --color-danger-border: #fb6180;
+    --color-recording: red;
+
+    /* Overlays and shadows. */
+    --color-overlay: rgba(0, 0, 0, 0.5);
+    --color-shadow: rgba(0, 0, 0, 0.45);
 }
 
 html {
@@ -15,22 +48,28 @@ html {
 }
 
 body {
-    background-color: #0f1116;
-    color: #ffffff;
+    background-color: var(--color-background);
+    color: var(--color-text);
     font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
     margin: 0;
 }
 
-.home-container {
-    height: 100vh;
+/* Shared layout for the full-screen primary views (list, map): full width,
+   padded, with clearance for the fixed bottom toolbar. */
+.primary-view {
     width: 100vw;
     padding: 16px;
+    padding-bottom: calc(16px + var(--bottom-toolbar-height));
+}
+
+.home-container {
+    min-height: 100vh;
 }
 
 .selectable-row {
     position: relative;
     display: flex;
-    background-color: #2a2f3e;
+    background-color: var(--color-surface-row);
     align-items: center;
     padding: 8px;
     cursor: pointer;
@@ -40,12 +79,12 @@ body {
    mouse). On touch devices :hover sticks until another element is tapped. */
 @media (hover: hover) {
     .selectable-row:hover {
-        background-color: #535e7a;
+        background-color: var(--color-surface-highlight);
     }
 }
 
 .selectable-row[data-selected="true"] {
-    background-color: #404962;
+    background-color: var(--color-surface-selected);
 }
 
 .selectable-row[data-selected="true"]::before {
@@ -55,11 +94,11 @@ body {
     bottom: 0;
     left: 0;
     width: 4px;
-    background-color: #b049ff;
+    background-color: var(--color-accent);
 }
 
 .selectable-row + .selectable-row {
-    border-top: 1px solid #383f52;
+    border-top: 1px solid var(--color-border);
 }
 
 .selectable-row__content {
@@ -75,11 +114,11 @@ body {
 .selectable-row__sub-header {
     font-size: 0.8rem;
     font-weight: lighter;
-    color: #b6b6b6;
+    color: var(--color-text-muted);
 }
 
 .row-group {
-    background-color: #1c2029;
+    background-color: var(--color-surface);
     border-radius: 8px;
     overflow: hidden;
 }
@@ -122,21 +161,26 @@ body {
 
     position: fixed;
     left: 50%;
-    bottom: var(--bottom-gap);
+    /* Float just above the fixed bottom toolbar. */
+    bottom: calc(var(--bottom-toolbar-height) + var(--bottom-gap));
     z-index: var(--z-floating-actions);
     display: flex;
     align-items: center;
     gap: 8px;
     padding: 8px;
-    background-color: #1c2029;
-    border: 1px solid #383f52;
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-border);
     border-radius: 8px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    box-shadow: 0 8px 24px var(--color-shadow);
     opacity: 0;
     pointer-events: none;
     /* Hidden: slide fully below the viewport — the bar's own height (100%),
-       plus the bottom gap and the upward reach of its shadow. */
-    transform: translate(-50%, calc(100% + var(--bottom-gap) + var(--shadow-reach)));
+       plus the toolbar it sits above, the bottom gap and the upward reach of
+       its shadow. */
+    transform: translate(
+        -50%,
+        calc(100% + var(--bottom-toolbar-height) + var(--bottom-gap) + var(--shadow-reach))
+    );
     transition:
         transform 0.25s ease,
         opacity 0.25s ease;
@@ -151,14 +195,14 @@ body {
 .camera-actions__separator {
     align-self: stretch;
     width: 1px;
-    background-color: #383f52;
+    background-color: var(--color-border);
 }
 
 .icon-button {
-    background: #535e7a;
-    border: 1px solid #616e8e;
+    background: var(--color-surface-highlight);
+    border: 1px solid var(--color-border-strong);
     cursor: pointer;
-    color: white;
+    color: var(--color-text);
     display: flex;
     justify-content: center;
     align-items: center;
@@ -167,8 +211,8 @@ body {
 }
 
 .icon-button--danger {
-    background: #fa486b;
-    border-color: #fb6180;
+    background: var(--color-danger);
+    border-color: var(--color-danger-border);
 }
 
 .icon-button > svg {
@@ -184,12 +228,12 @@ body {
     display: flex;
     justify-content: center;
     align-items: center;
-    background-color: rgba(0, 0, 0, 0.5);
+    background-color: var(--color-overlay);
     z-index: var(--z-modal);
 }
 
 .modal {
-    background: #383f52;
+    background: var(--color-border);
     padding: 16px;
     border-radius: 8px;
 }
@@ -212,7 +256,7 @@ body {
     cursor: pointer;
     background: none;
     color: inherit;
-    border: 1px solid white;
+    border: 1px solid var(--color-text);
     border-radius: 4px;
     padding: 8px 16px;
     font-weight: bold;
@@ -220,9 +264,9 @@ body {
 
 .primary-button {
     cursor: pointer;
-    background: #b049ff;
-    color: white;
-    border: 1px solid #a837ff;
+    background: var(--color-accent);
+    color: var(--color-text);
+    border: 1px solid var(--color-accent-border);
     border-radius: 4px;
     padding: 8px;
     padding: 8px 16px;
@@ -230,8 +274,8 @@ body {
 }
 
 .button[disabled="true"] {
-    background-color: #b6b6b6;
-    border-color: #616e8e;
+    background-color: var(--color-text-muted);
+    border-color: var(--color-border-strong);
     cursor: default;
 }
 
@@ -254,7 +298,7 @@ ul {
     display: flex;
     flex-direction: column;
     gap: 8px;
-    border: 1px solid #383f52;
+    border: 1px solid var(--color-border);
     padding: 16px;
     border-radius: 8px;
     max-width: 400px;
@@ -275,13 +319,69 @@ ul {
     height: 48px;
     text-align: center;
     border-radius: 8px;
-    border: 1px solid #383f52;
+    border: 1px solid var(--color-border);
 }
 
 .recording-indicator {
-    --fill: #b6b6b6;
+    --fill: var(--color-text-muted);
 }
 
 .recording-indicator[data-recording="true"] {
-    --fill: red;
+    --fill: var(--color-recording);
+}
+
+.bottom-toolbar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: var(--bottom-toolbar-height);
+    z-index: var(--z-bottom-toolbar);
+    display: flex;
+    background-color: var(--color-surface);
+    border-top: 1px solid var(--color-border);
+}
+
+.bottom-toolbar__item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--color-text-muted);
+    font-family: inherit;
+    font-size: 0.75rem;
+    text-decoration: none;
+}
+
+.bottom-toolbar__item--active {
+    color: var(--color-accent);
+}
+
+.map-view {
+    position: relative;
+    height: 100vh;
+}
+
+.map-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    background-color: var(--color-surface-sunken);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+}
+
+.map-view__hint {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: var(--color-text-muted);
+    font-weight: bold;
+    pointer-events: none;
 }

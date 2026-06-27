@@ -14,7 +14,7 @@ fn deselect(selection: &mut Signal<Vec<String>>, camera_ids: &[String]) {
 }
 
 #[component]
-pub fn Home() -> Element {
+pub fn CameraList() -> Element {
     let UseCamerasResult { cameras, loading } = use_cameras();
     let update_recording_mode = use_update_recording_mode();
     let mut confirmation_modal_type = use_signal(|| ConfirmationModalType::None);
@@ -59,7 +59,7 @@ pub fn Home() -> Element {
     let tags = tags; // Remove mutability
 
     rsx! {
-        div { class: "home-container",
+        div { class: "primary-view home-container",
             if loading {
                 "Loading..."
             }

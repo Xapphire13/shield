@@ -24,7 +24,7 @@ pub fn Login() -> Element {
         spawn(async move {
             match client.authenticate(code().iter().collect()).await {
                 Ok(_) => {
-                    nav.replace(Route::Home);
+                    nav.replace(Route::CameraList);
                 }
                 Err(_) => {
                     // TODO

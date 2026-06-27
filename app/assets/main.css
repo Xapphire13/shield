@@ -365,12 +365,17 @@ ul {
 .map-view {
     position: relative;
     height: 100vh;
+    display: flex;
+    flex-direction: column;
 }
 
 .map-canvas {
     display: block;
     width: 100%;
-    height: 100%;
+    /* Fill the height remaining below the top bar; min-height: 0 lets this flex
+       child shrink to its box instead of overflowing. */
+    flex: 1;
+    min-height: 0;
     background-color: var(--color-surface-sunken);
     border: 1px solid var(--color-border);
     border-radius: 8px;
@@ -380,8 +385,20 @@ ul {
     cursor: grab;
 }
 
-.map-canvas:active {
+/* Cursor reflects the active gesture (driven by the `data-gesture` attribute)
+   so it stays stable while dragging, even as the pointer crosses child
+   elements. */
+.map-canvas[data-gesture="pan"],
+.map-canvas[data-gesture="move"] {
     cursor: grabbing;
+}
+
+.map-canvas[data-gesture="aim"] {
+    cursor: crosshair;
+}
+
+.map-canvas[data-gesture="range"] {
+    cursor: nesw-resize;
 }
 
 /* A placed camera: marker dot + translucent field-of-view wedge. */
@@ -402,9 +419,9 @@ ul {
     vector-effect: non-scaling-stroke;
 }
 
-/* Interactive markers get a pointer affordance in edit mode. */
+/* Interactive markers get a draggable affordance in edit mode. */
 .map-camera--editing .map-camera__marker {
-    cursor: pointer;
+    cursor: grab;
 }
 
 /* Selected camera: emphasize its marker and cone. */
@@ -443,15 +460,18 @@ ul {
     stroke: var(--color-text);
     stroke-width: 1.5px;
     vector-effect: non-scaling-stroke;
-    cursor: pointer;
 }
 
+/* Aim handle rotates the cone — a crosshair signals "point it here". */
 .map-camera__handle--aim {
     fill: var(--color-accent);
+    cursor: crosshair;
 }
 
+/* Range handle resizes the cone length — a resize cursor signals "drag out". */
 .map-camera__handle--range {
     fill: var(--color-surface-highlight);
+    cursor: nesw-resize;
 }
 
 /* While awaiting a placement tap, hint that the canvas is a drop target. */
@@ -461,20 +481,14 @@ ul {
 
 /* Top bar overlaying the canvas: title centered, edit toggle top-right, and
    undo/redo controls top-left while editing. */
+/* Solid bar in normal flow above the canvas (does not overlap map content). */
 .map-topbar {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
     display: flex;
     align-items: center;
     gap: 8px;
     padding: 12px 16px;
-    pointer-events: none;
-}
-
-.map-topbar > * {
-    pointer-events: auto;
+    background-color: var(--color-surface);
+    border-bottom: 1px solid var(--color-border);
 }
 
 .map-topbar__history {

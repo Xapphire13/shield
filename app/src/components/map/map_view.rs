@@ -131,6 +131,22 @@ enum Gesture {
     },
 }
 
+impl Gesture {
+    /// Stable label for the active gesture, surfaced as a `data-gesture`
+    /// attribute on the canvas so the cursor stays consistent while dragging
+    /// even as the pointer crosses child elements.
+    fn label(&self) -> &'static str {
+        match self {
+            Gesture::None => "none",
+            Gesture::Pan { .. } => "pan",
+            Gesture::Pinch { .. } => "pinch",
+            Gesture::MoveCamera { .. } => "move",
+            Gesture::AimCamera { .. } => "aim",
+            Gesture::RangeCamera { .. } => "range",
+        }
+    }
+}
+
 /// A local, uncommitted preview of an in-progress manipulation. The canvas
 /// renders from this instead of the stored map while a gesture is active so the
 /// user sees live feedback; the matching edit is committed once on release.
@@ -154,6 +170,20 @@ fn bearing_to(cx: f64, cy: f64, wx: f64, wy: f64) -> u16 {
     let theta = (wy - cy).atan2(wx - cx).to_degrees();
     let bearing = (theta + 90.0).rem_euclid(360.0);
     bearing.round() as u16
+}
+
+/// Convert a pointer event to canvas-relative pixels using a cached canvas
+/// origin (the canvas's viewport-relative top-left).
+///
+/// All pointer math must share one coordinate space, but `element_coordinates`
+/// is relative to whichever child element is under the pointer — during a drag
+/// the pointer crosses the markers, cones, handles and grid, so its origin keeps
+/// changing. `client_coordinates` is viewport-relative and target-independent;
+/// subtracting the cached canvas origin yields a stable canvas-relative point
+/// that every gesture (pan / move / aim / range / wheel) can rely on.
+fn canvas_xy(evt: &PointerData, origin: (f64, f64)) -> (f64, f64) {
+    let client = evt.client_coordinates();
+    (client.x - origin.0, client.y - origin.1)
 }
 
 /// Map host: live data, pan/zoom viewport, and a full edit experience (place /
@@ -188,6 +218,36 @@ pub fn MapView() -> Element {
     // The camera id chosen in the picker and awaiting a placement tap.
     let mut placing = use_signal(|| None::<String>);
     let mut picker_open = use_signal(|| false);
+
+    // Cached viewport-relative top-left of the canvas. All pointer math is done
+    // in canvas-relative coordinates derived from this origin (see `canvas_xy`).
+    // The rect is stable during a drag, so the cached value stays correct; it is
+    // captured on mount and refreshed on resize.
+    let mut canvas_origin = use_signal(|| (0.0_f64, 0.0_f64));
+    let mut canvas_element = use_signal(|| None::<std::rc::Rc<MountedData>>);
+
+    let refresh_origin = use_callback(move |_: ()| {
+        if let Some(element) = canvas_element.read().clone() {
+            spawn(async move {
+                if let Ok(rect) = element.get_client_rect().await {
+                    canvas_origin.set((rect.origin.x, rect.origin.y));
+                }
+            });
+        }
+    });
+
+    // Keep the cached canvas origin in sync with window resizes (the rect's
+    // top-left can shift when the layout reflows).
+    use_effect(move || {
+        let mut resize = document::eval(
+            "window.addEventListener('resize', () => dioxus.send(0)); dioxus.send(0);",
+        );
+        spawn(async move {
+            while resize.recv::<i32>().await.is_ok() {
+                refresh_origin(());
+            }
+        });
+    });
 
     let placed = map.as_ref().map(|m| m.cameras.clone()).unwrap_or_default();
 
@@ -236,6 +296,7 @@ pub fn MapView() -> Element {
     let selected_id = selection.read().clone();
     let is_editing = *editing.read();
     let is_placing = placing.read().is_some();
+    let gesture_label = gesture.read().label();
 
     // The currently selected camera (after preview), for the inspector.
     let selected_camera = selected_id
@@ -244,20 +305,76 @@ pub fn MapView() -> Element {
 
     rsx! {
         div { class: "primary-view map-view",
+            // --- Top bar (title, undo/redo, edit toggle) ---
+            // Rendered before the canvas so it sits in normal flow above it.
+            div { class: "map-topbar",
+                if is_editing {
+                    div { class: "map-topbar__history",
+                        button {
+                            class: "map-topbar__icon",
+                            disabled: !can_undo,
+                            onclick: move |_| undo(()),
+                            Icon { width: 18, height: 18, icon: FiCornerUpLeft }
+                        }
+                        button {
+                            class: "map-topbar__icon",
+                            disabled: !can_redo,
+                            onclick: move |_| redo(()),
+                            Icon { width: 18, height: 18, icon: FiCornerUpRight }
+                        }
+                    }
+                }
+
+                span { class: "map-topbar__title",
+                    if map_loading || cameras_loading {
+                        "Loading map…"
+                    } else {
+                        "Map"
+                    }
+                }
+
+                button {
+                    class: "map-topbar__edit",
+                    "data-active": is_editing,
+                    onclick: move |_| {
+                        let next = !*editing.read();
+                        editing.set(next);
+                        if !next {
+                            selection.set(None);
+                            placing.set(None);
+                            picker_open.set(false);
+                        }
+                    },
+                    if is_editing {
+                        "Done"
+                    } else {
+                        "Edit"
+                    }
+                }
+            }
+
             svg {
                 class: "map-canvas",
                 "data-placing": is_placing,
+                "data-gesture": gesture_label,
                 xmlns: "http://www.w3.org/2000/svg",
                 // Touch-action none lets us own panning/pinching instead of the
                 // browser scrolling/zooming the page.
                 style: "touch-action: none;",
 
+                onmounted: move |evt| {
+                    canvas_element.set(Some(evt.data()));
+                    refresh_origin(());
+                },
+
                 // --- Wheel zoom (desktop) ---
                 onwheel: move |evt| {
                     let delta = evt.data().delta().strip_units().y;
-                    let coords = evt.data().element_coordinates();
+                    let client = evt.data().client_coordinates();
+                    let origin = *canvas_origin.read();
+                    let (sx, sy) = (client.x - origin.0, client.y - origin.1);
                     let factor = (-delta * WHEEL_ZOOM_STEP).exp();
-                    viewport.write().zoom_at(factor, coords.x, coords.y);
+                    viewport.write().zoom_at(factor, sx, sy);
                 },
 
                 // --- Pointer (mouse / single finger) ---
@@ -266,10 +383,10 @@ pub fn MapView() -> Element {
                 // In placing mode it instead drops the chosen camera; in edit
                 // mode with nothing under it, it deselects.
                 onpointerdown: move |evt| {
-                    let coords = evt.data().element_coordinates();
+                    let (cx, cy) = canvas_xy(&evt.data(), *canvas_origin.read());
                     let pending = placing.read().clone();
                     if let Some(camera_id) = pending {
-                        let (wx, wy) = viewport.read().screen_to_world(coords.x, coords.y);
+                        let (wx, wy) = viewport.read().screen_to_world(cx, cy);
                         place_camera(MapCamera {
                             camera_id: camera_id.clone(),
                             position: Point { x: wx.round() as i32, y: wy.round() as i32 },
@@ -282,20 +399,20 @@ pub fn MapView() -> Element {
                     if is_editing {
                         selection.set(None);
                     }
-                    gesture.set(Gesture::Pan { last_x: coords.x, last_y: coords.y });
+                    gesture.set(Gesture::Pan { last_x: cx, last_y: cy });
                 },
                 onpointermove: move |evt| {
-                    let coords = evt.data().element_coordinates();
+                    let (cx, cy) = canvas_xy(&evt.data(), *canvas_origin.read());
                     let current = gesture.read().clone();
                     match current {
                         Gesture::Pan { last_x, last_y } => {
-                            viewport.write().pan_by(coords.x - last_x, coords.y - last_y);
-                            gesture.set(Gesture::Pan { last_x: coords.x, last_y: coords.y });
+                            viewport.write().pan_by(cx - last_x, cy - last_y);
+                            gesture.set(Gesture::Pan { last_x: cx, last_y: cy });
                         }
                         Gesture::MoveCamera { camera_id, last_x, last_y } => {
                             let zoom = viewport.read().zoom;
-                            let dx = (coords.x - last_x) / zoom;
-                            let dy = (coords.y - last_y) / zoom;
+                            let dx = (cx - last_x) / zoom;
+                            let dy = (cy - last_y) / zoom;
                             let base = drag_preview
                                 .read()
                                 .position_for(&camera_id)
@@ -318,14 +435,14 @@ pub fn MapView() -> Element {
                                 gesture
                                     .set(Gesture::MoveCamera {
                                         camera_id,
-                                        last_x: coords.x,
-                                        last_y: coords.y,
+                                        last_x: cx,
+                                        last_y: cy,
                                     });
                             }
                         }
                         Gesture::AimCamera { camera_id } => {
                             if let Some(camera) = placed.iter().find(|c| c.camera_id == camera_id) {
-                                let (wx, wy) = viewport.read().screen_to_world(coords.x, coords.y);
+                                let (wx, wy) = viewport.read().screen_to_world(cx, cy);
                                 let direction_deg = bearing_to(
                                     camera.position.x as f64,
                                     camera.position.y as f64,
@@ -341,7 +458,7 @@ pub fn MapView() -> Element {
                         }
                         Gesture::RangeCamera { camera_id } => {
                             if let Some(camera) = placed.iter().find(|c| c.camera_id == camera_id) {
-                                let (wx, wy) = viewport.read().screen_to_world(coords.x, coords.y);
+                                let (wx, wy) = viewport.read().screen_to_world(cx, cy);
                                 let dist = distance(
                                     camera.position.x as f64,
                                     camera.position.y as f64,
@@ -455,12 +572,12 @@ pub fn MapView() -> Element {
                                         let id = id.clone();
                                         move |evt: Event<PointerData>| {
                                             selection.set(Some(id.clone()));
-                                            let coords = evt.element_coordinates();
+                                            let (cx, cy) = canvas_xy(&evt.data(), *canvas_origin.read());
                                             gesture
                                                 .set(Gesture::MoveCamera {
                                                     camera_id: id.clone(),
-                                                    last_x: coords.x,
-                                                    last_y: coords.y,
+                                                    last_x: cx,
+                                                    last_y: cy,
                                                 });
                                         }
                                     },
@@ -479,53 +596,6 @@ pub fn MapView() -> Element {
                                 }
                             }
                         }
-                    }
-                }
-            }
-
-            // --- Top bar (title, undo/redo, edit toggle) ---
-            div { class: "map-topbar",
-                if is_editing {
-                    div { class: "map-topbar__history",
-                        button {
-                            class: "map-topbar__icon",
-                            disabled: !can_undo,
-                            onclick: move |_| undo(()),
-                            Icon { width: 18, height: 18, icon: FiCornerUpLeft }
-                        }
-                        button {
-                            class: "map-topbar__icon",
-                            disabled: !can_redo,
-                            onclick: move |_| redo(()),
-                            Icon { width: 18, height: 18, icon: FiCornerUpRight }
-                        }
-                    }
-                }
-
-                span { class: "map-topbar__title",
-                    if map_loading || cameras_loading {
-                        "Loading map…"
-                    } else {
-                        "Map"
-                    }
-                }
-
-                button {
-                    class: "map-topbar__edit",
-                    "data-active": is_editing,
-                    onclick: move |_| {
-                        let next = !*editing.read();
-                        editing.set(next);
-                        if !next {
-                            selection.set(None);
-                            placing.set(None);
-                            picker_open.set(false);
-                        }
-                    },
-                    if is_editing {
-                        "Done"
-                    } else {
-                        "Edit"
                     }
                 }
             }

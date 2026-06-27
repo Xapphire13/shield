@@ -374,14 +374,30 @@ ul {
     background-color: var(--color-surface-sunken);
     border: 1px solid var(--color-border);
     border-radius: 8px;
+    /* Avoid text selection / native gestures while panning + pinching. */
+    user-select: none;
+    -webkit-user-select: none;
+    cursor: grab;
 }
 
-.map-view__hint {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    color: var(--color-text-muted);
-    font-weight: bold;
-    pointer-events: none;
+.map-canvas:active {
+    cursor: grabbing;
+}
+
+/* A placed camera: marker dot + translucent field-of-view wedge. */
+.map-camera__fov {
+    fill: var(--color-accent);
+    fill-opacity: 0.18;
+    stroke: var(--color-accent-border);
+    /* Hairline edge independent of zoom. */
+    stroke-width: 1px;
+    vector-effect: non-scaling-stroke;
+    stroke-opacity: 0.5;
+}
+
+.map-camera__marker {
+    fill: var(--color-accent);
+    stroke: var(--color-text);
+    stroke-width: 1.5px;
+    vector-effect: non-scaling-stroke;
 }

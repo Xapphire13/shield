@@ -104,6 +104,14 @@ impl ApiClient {
         self.client.post(format!("{}{url}", self.base_url))
     }
 
+    pub fn patch(&self, url: &str) -> RequestBuilder {
+        self.client.patch(format!("{}{url}", self.base_url))
+    }
+
+    pub fn delete(&self, url: &str) -> RequestBuilder {
+        self.client.delete(format!("{}{url}", self.base_url))
+    }
+
     pub fn set_tokens(&self, access_token: String, refresh_token: String) -> Result<(), ApiError> {
         self.storage.set_tokens(access_token, refresh_token)?;
 

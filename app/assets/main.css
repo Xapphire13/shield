@@ -171,8 +171,8 @@ body {
     border-color: #fb6180;
 }
 
-.icon-button > i {
-    height: 24px;
+.icon-button > svg {
+    stroke-width: 1px;
 }
 
 .modal-container {

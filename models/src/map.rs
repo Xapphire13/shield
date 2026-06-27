@@ -5,7 +5,9 @@ use serde::{Deserialize, Serialize};
 ///
 /// Coordinates are real-world (identity scale) measured in centimeters. The
 /// outer map bounds are not modeled here — they are computed client-side
-/// (bounding box of placed elements + buffer) for the minimap only.
+/// (bounding box of placed elements + buffer) for the minimap only. Display
+/// units (metric/imperial) are a per-user client-side preference, out of scope
+/// for this shared model.
 #[derive(Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Map {
@@ -13,9 +15,6 @@ pub struct Map {
     pub id: String,
     /// Human-readable name of the map.
     pub name: String,
-    /// Display unit system for measurements. Internal storage is always
-    /// centimeters; this only affects how values are shown/entered.
-    pub unit_system: UnitSystem,
     /// Cameras placed on the map.
     pub cameras: Vec<MapCamera>,
 }
@@ -56,15 +55,6 @@ pub struct FieldOfView {
     pub angle_deg: u16,
     /// Cone length (range), in centimeters.
     pub range: i32,
-}
-
-/// Display unit system for measurements. Internal coordinates are always
-/// centimeters; this only affects how values are shown/entered.
-#[derive(Serialize, Deserialize, Clone, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub enum UnitSystem {
-    Metric,
-    Imperial,
 }
 
 /// Partial update for a placed camera; omitted fields are left unchanged.

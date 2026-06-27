@@ -1,5 +1,6 @@
 use dioxus::prelude::*;
-use dioxus_feather_icons::icon;
+use dioxus_free_icons::Icon;
+use dioxus_free_icons::icons::fi_icons::{FiVideo, FiVideoOff, FiX};
 
 use crate::components::ui::{ButtonColor, IconButton};
 
@@ -13,16 +14,28 @@ pub fn CameraActions(
     rsx! {
         div { class: "camera-actions", "data-visible": visible, inert: (!visible).then_some(true),
             IconButton {
-                icon: icon!(video),
+                icon: rsx! {
+                    Icon { width: 24, height: 24, icon: FiVideo }
+                },
                 color: ButtonColor::Danger,
                 on_press: on_toggle_record_on,
             }
 
-            IconButton { icon: icon!(video_off), on_press: on_toggle_record_off }
+            IconButton {
+                icon: rsx! {
+                    Icon { width: 24, height: 24, icon: FiVideoOff }
+                },
+                on_press: on_toggle_record_off,
+            }
 
             div { class: "camera-actions__separator" }
 
-            IconButton { icon: icon!(x), on_press: on_dismiss }
+            IconButton {
+                icon: rsx! {
+                    Icon { width: 24, height: 24, icon: FiX }
+                },
+                on_press: on_dismiss,
+            }
         }
     }
 }

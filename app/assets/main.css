@@ -171,7 +171,7 @@ body {
     border-color: #fb6180;
 }
 
-.icon-button > i {
+.icon-button > svg {
     height: 24px;
 }
 

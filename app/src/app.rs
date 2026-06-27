@@ -9,10 +9,7 @@ use crate::{
 #[derive(Routable, Clone)]
 #[rustfmt::skip]
 pub enum Route {
-    // `AppRoot` provides the API client to every route from inside the
-    // `Router`, so router-aware navigation is available app-wide.
     #[layout(AppRoot)]
-        // Primary views share the bottom toolbar via the `MainShell` layout.
         #[layout(MainShell)]
             #[route("/")]
             CameraList,

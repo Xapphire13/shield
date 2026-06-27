@@ -1,5 +1,6 @@
 use dioxus::prelude::*;
-use dioxus_feather_icons::icon;
+use dioxus_free_icons::Icon;
+use dioxus_free_icons::icons::fi_icons::{FiList, FiMap};
 
 use crate::app::Route;
 
@@ -11,7 +12,7 @@ pub fn BottomToolbar() -> Element {
                 to: Route::CameraList,
                 class: "bottom-toolbar__item",
                 active_class: "bottom-toolbar__item--active",
-                {icon!(list)}
+                Icon { width: 20, height: 20, icon: FiList }
                 span { "List" }
             }
 
@@ -19,7 +20,7 @@ pub fn BottomToolbar() -> Element {
                 to: Route::MapView,
                 class: "bottom-toolbar__item",
                 active_class: "bottom-toolbar__item--active",
-                {icon!(map)}
+                Icon { width: 20, height: 20, icon: FiMap }
                 span { "Map" }
             }
         }

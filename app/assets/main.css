@@ -367,15 +367,21 @@ ul {
     height: 100vh;
     display: flex;
     flex-direction: column;
+    /* Override the shared .primary-view inset so the top bar can sit flush
+       against the page edges; the canvas insets itself instead (below). */
+    padding: 0;
 }
 
 .map-canvas {
     display: block;
-    width: 100%;
     /* Fill the height remaining below the top bar; min-height: 0 lets this flex
        child shrink to its box instead of overflowing. */
     flex: 1;
     min-height: 0;
+    /* Inset card: a gap below the top bar, comfortable side margins, and bottom
+       spacing that still clears the fixed bottom nav / edit strip (the clearance
+       .primary-view's padding-bottom previously provided). */
+    margin: 12px 16px calc(16px + var(--bottom-toolbar-height));
     background-color: var(--color-surface-sunken);
     border: 1px solid var(--color-border);
     border-radius: 8px;

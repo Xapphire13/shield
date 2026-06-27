@@ -2,7 +2,7 @@ use axum::{
     Router,
     http::{StatusCode, Uri},
     middleware,
-    routing::{get, post},
+    routing::{delete, get, patch, post},
 };
 use tracing::error;
 
@@ -25,7 +25,17 @@ pub fn create_routes() -> Router<AppState> {
     // Other routes without backoff
     let other_routes = Router::new()
         .route("/cameras", get(handlers::list_cameras))
-        .route("/set_recording_mode", post(handlers::set_recording_mode));
+        .route("/set_recording_mode", post(handlers::set_recording_mode))
+        .route("/maps/{id}", get(handlers::get_map))
+        .route("/maps/{id}/cameras", post(handlers::add_map_camera))
+        .route(
+            "/maps/{id}/cameras/{camera_id}",
+            patch(handlers::update_map_camera),
+        )
+        .route(
+            "/maps/{id}/cameras/{camera_id}",
+            delete(handlers::delete_map_camera),
+        );
 
     Router::new()
         .merge(auth_router)

@@ -1,12 +1,20 @@
+mod add_map_camera;
 mod authenticate;
+mod delete_map_camera;
+mod get_map;
 mod list_cameras;
 mod refresh;
 mod set_recording_mode;
+mod update_map_camera;
 
+pub use add_map_camera::*;
 pub use authenticate::*;
+pub use delete_map_camera::*;
+pub use get_map::*;
 pub use list_cameras::*;
 pub use refresh::*;
 pub use set_recording_mode::*;
+pub use update_map_camera::*;
 
 use anyhow::anyhow;
 use axum::{RequestPartsExt, extract::FromRequestParts, http::request::Parts};

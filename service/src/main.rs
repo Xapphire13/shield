@@ -13,11 +13,12 @@ use tracing::{Level, error, info, trace};
 use tracing_subscriber::{filter, layer::SubscriberExt, util::SubscriberInitExt};
 use unifi_protect_client::UnifiProtectClient;
 
-use crate::{config::Config, refresh_token_store::RefreshTokenStore};
+use crate::{config::Config, map_store::MapStore, refresh_token_store::RefreshTokenStore};
 
 mod app_error;
 mod config;
 mod handlers;
+mod map_store;
 mod middleware;
 mod refresh_token_store;
 mod routes;
@@ -27,6 +28,7 @@ struct AppState {
     client: Arc<UnifiProtectClient>,
     config: Arc<Config>,
     refresh_token_store: Arc<RefreshTokenStore>,
+    map_store: Arc<MapStore>,
     notification_dispatcher: Arc<ntfy::Dispatcher<ntfy::dispatcher::Async>>,
 }
 
@@ -42,6 +44,7 @@ async fn main() {
 
     let config = Config::load();
     let refresh_token_store = Arc::new(RefreshTokenStore::new());
+    let map_store = Arc::new(MapStore::new());
 
     let app_state = AppState {
         client: Arc::new(UnifiProtectClient::new(
@@ -51,6 +54,7 @@ async fn main() {
         )),
         config: Arc::new(config),
         refresh_token_store: refresh_token_store.clone(),
+        map_store,
         notification_dispatcher: Arc::new(
             ntfy::dispatcher::builder("https://ntfy.sh")
                 .build_async()

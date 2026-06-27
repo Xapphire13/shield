@@ -36,8 +36,12 @@ body {
     cursor: pointer;
 }
 
-.selectable-row:hover {
-    background-color: #535e7a;
+/* Only apply hover styling on devices with a real hovering pointer (e.g. a
+   mouse). On touch devices :hover sticks until another element is tapped. */
+@media (hover: hover) {
+    .selectable-row:hover {
+        background-color: #535e7a;
+    }
 }
 
 .selectable-row[data-selected="true"] {

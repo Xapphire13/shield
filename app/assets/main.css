@@ -355,6 +355,7 @@ ul {
     color: var(--color-text-muted);
     font-family: inherit;
     font-size: 0.75rem;
+    text-decoration: none;
 }
 
 .bottom-toolbar__item--active {

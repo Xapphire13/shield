@@ -445,7 +445,7 @@ ul {
     cursor: move;
 }
 
-/* In view mode the marker is clickable (opens the read-only info card). */
+/* In view mode the marker is clickable (opens the read-only info popover). */
 .map-camera[data-editing="false"] .map-camera__marker {
     cursor: pointer;
 }

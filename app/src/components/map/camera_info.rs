@@ -1,9 +1,10 @@
 use dioxus::prelude::*;
 use dioxus_free_icons::Icon;
 use dioxus_free_icons::icons::fi_icons::FiX;
-use shield_models::{Camera, RecordingMode};
+use shield_models::Camera;
 
 use crate::components::ui::{ButtonColor, IconButton};
+use crate::utils::RecordingModeExtensions;
 
 /// Nominal popover width (px) used for the horizontal anchor/clamp math. The
 /// element's CSS width matches this so the computed left/caret offsets line up
@@ -130,7 +131,7 @@ pub fn CameraInfo(
                     div { class: "camera-info__row",
                         span { class: "camera-info__label", "Recording mode" }
                         span { class: "camera-info__value",
-                            "{recording_mode_label(&camera.recording_settings.mode)}"
+                            "{camera.recording_settings.mode.display_name()}"
                         }
                     }
                 }
@@ -172,13 +173,4 @@ fn viewport_size() -> (f64, f64) {
         .and_then(|v| v.as_f64())
         .unwrap_or(0.0);
     (w, h)
-}
-
-/// Human-readable label for a recording mode.
-fn recording_mode_label(mode: &RecordingMode) -> &'static str {
-    match mode {
-        RecordingMode::Always => "Always",
-        RecordingMode::Schedule => "Schedule",
-        RecordingMode::Never => "Never",
-    }
 }

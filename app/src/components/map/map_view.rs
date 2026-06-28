@@ -445,14 +445,19 @@ pub fn MapView() -> Element {
                 }
             }
 
-            svg {
-                class: "map-canvas",
-                "data-placing": is_placing,
-                "data-gesture": gesture_label,
-                xmlns: "http://www.w3.org/2000/svg",
-                // Touch-action none lets us own panning/pinching instead of the
-                // browser scrolling/zooming the page.
-                style: "touch-action: none;",
+            // Frame carries the visual inset as padding so the svg can fill a
+            // definite box. An <svg> flex child does not reliably stretch on the
+            // cross axis, so it needs a concrete size for `get_client_rect` (and
+            // thus fit-to-content) to measure the real card dimensions.
+            div { class: "map-canvas-frame",
+                svg {
+                    class: "map-canvas",
+                    "data-placing": is_placing,
+                    "data-gesture": gesture_label,
+                    xmlns: "http://www.w3.org/2000/svg",
+                    // Touch-action none lets us own panning/pinching instead of
+                    // the browser scrolling/zooming the page.
+                    style: "touch-action: none;",
 
                 onmounted: move |evt| {
                     canvas_element.set(Some(evt.data()));
@@ -688,6 +693,7 @@ pub fn MapView() -> Element {
                                 }
                             }
                         }
+                    }
                     }
                 }
             }

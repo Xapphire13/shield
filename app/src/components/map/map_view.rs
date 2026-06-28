@@ -608,9 +608,27 @@ pub fn MapView() -> Element {
                     CameraInspector {
                         name: name_for(&camera.camera_id),
                         fov: camera.fov.clone(),
-                        on_change_fov: {
+                        on_preview_fov: {
+                            // Live, uncommitted preview: drive the same drag
+                            // preview the on-canvas handles use so the cone
+                            // (and the inspector's own `fov` prop) update in
+                            // real time without persisting or touching undo.
                             let id = camera.camera_id.clone();
-                            move |fov| aim_camera((id.clone(), fov))
+                            move |fov| {
+                                drag_preview
+                                    .set(DragPreview::Fov {
+                                        camera_id: id.clone(),
+                                        fov,
+                                    });
+                            }
+                        },
+                        on_change_fov: {
+                            // Release: commit one edit and drop the preview.
+                            let id = camera.camera_id.clone();
+                            move |fov| {
+                                aim_camera((id.clone(), fov));
+                                drag_preview.set(DragPreview::None);
+                            }
                         },
                         on_delete: {
                             let id = camera.camera_id.clone();

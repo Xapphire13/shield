@@ -394,9 +394,13 @@ ul {
 /* Cursor reflects the active gesture (driven by the `data-gesture` attribute)
    so it stays stable while dragging, even as the pointer crosses child
    elements. */
-.map-canvas[data-gesture="pan"],
-.map-canvas[data-gesture="move"] {
+.map-canvas[data-gesture="pan"] {
     cursor: grabbing;
+}
+
+/* Repositioning a camera origin is a move, distinct from panning the canvas. */
+.map-canvas[data-gesture="move"] {
+    cursor: move;
 }
 
 .map-canvas[data-gesture="aim"] {
@@ -425,9 +429,9 @@ ul {
     vector-effect: non-scaling-stroke;
 }
 
-/* Interactive markers get a draggable affordance in edit mode. */
+/* Interactive markers can be repositioned in edit mode. */
 .map-camera--editing .map-camera__marker {
-    cursor: grab;
+    cursor: move;
 }
 
 /* Selected camera: emphasize its marker and cone. */
@@ -492,7 +496,10 @@ ul {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 12px 16px;
+    padding: 8px 16px;
+    /* Fixed height (sized to the controls) and centered children so toggling
+       Edit — which shows/hides the undo/redo buttons — never resizes the bar. */
+    min-height: 52px;
     background-color: var(--color-surface);
     border-bottom: 1px solid var(--color-border);
 }
@@ -506,6 +513,9 @@ ul {
     display: flex;
     align-items: center;
     justify-content: center;
+    /* Keep the icon buttons within the bar height so they don't grow it. */
+    height: 32px;
+    width: 32px;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     color: var(--color-text);

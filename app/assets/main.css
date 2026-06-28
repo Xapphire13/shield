@@ -445,6 +445,11 @@ ul {
     cursor: move;
 }
 
+/* In view mode the marker is clickable (opens the read-only info card). */
+.map-camera[data-editing="false"] .map-camera__marker {
+    cursor: pointer;
+}
+
 /* Selected camera: emphasize its marker and cone. */
 .map-camera[data-selected="true"] .map-camera__marker {
     stroke: var(--color-text);

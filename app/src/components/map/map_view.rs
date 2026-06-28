@@ -8,6 +8,7 @@ use wasm_bindgen::closure::Closure;
 use crate::components::map::camera_inspector::CameraInspector;
 use crate::components::map::edit_toolbar::{CameraPicker, EditToolbar};
 use crate::components::map::map_camera::{MARKER_RADIUS_CM, MapCameraMarker};
+use crate::components::map::minimap::Minimap;
 use crate::hooks::{UseCamerasResult, UseMapResult, use_cameras, use_map};
 
 /// The single map edited in v1. The service lazily returns an empty map for any
@@ -223,6 +224,18 @@ fn content_bounds(cameras: &[MapCamera]) -> Option<(f64, f64, f64, f64)> {
     }
 
     Some((min_x, min_y, max_x, max_y))
+}
+
+/// Smallest world rectangle `(min_x, min_y, max_x, max_y)` containing both
+/// inputs. Used to grow the minimap's outer box so it always contains the
+/// visible rect, even when the user pans into empty space past the content.
+fn union_bounds(a: (f64, f64, f64, f64), b: (f64, f64, f64, f64)) -> (f64, f64, f64, f64) {
+    (a.0.min(b.0), a.1.min(b.1), a.2.max(b.2), a.3.max(b.3))
+}
+
+/// Whether `outer` fully contains `inner` (both `(min_x, min_y, max_x, max_y)`).
+fn contains_bounds(outer: (f64, f64, f64, f64), inner: (f64, f64, f64, f64)) -> bool {
+    outer.0 <= inner.0 && outer.1 <= inner.1 && outer.2 >= inner.2 && outer.3 >= inner.3
 }
 
 /// Active gesture being tracked across pointer/touch events.
@@ -479,6 +492,31 @@ pub fn MapView() -> Element {
     let selected_camera = selected_id
         .as_ref()
         .and_then(|id| display_cameras.iter().find(|c| &c.camera_id == id).cloned());
+
+    // --- Minimap inputs ---
+    // The minimap only renders when there is content to navigate AND the canvas
+    // has been measured (non-zero size). `visible` is the world rect currently
+    // on screen, derived from the viewport + canvas size; `world_bounds` is the
+    // content box grown to always contain `visible` so the indicator never spills
+    // outside the outer box when panning into empty space. Auto-hide: skip it
+    // when fully zoomed out (the visible rect already contains all the content,
+    // so there is nothing off-screen to navigate to).
+    let (canvas_w, canvas_h) = *canvas_size.read();
+    let minimap_data = if canvas_w > 0.0 && canvas_h > 0.0 {
+        content_bounds(&display_cameras).and_then(|content| {
+            let vp = *viewport.read();
+            let (vmin_x, vmin_y) = vp.screen_to_world(0.0, 0.0);
+            let (vmax_x, vmax_y) = vp.screen_to_world(canvas_w, canvas_h);
+            let visible = (vmin_x, vmin_y, vmax_x, vmax_y);
+            if contains_bounds(visible, content) {
+                None
+            } else {
+                Some((union_bounds(content, visible), visible))
+            }
+        })
+    } else {
+        None
+    };
 
     rsx! {
         div { class: "primary-view map-view",
@@ -831,6 +869,24 @@ pub fn MapView() -> Element {
                             picker_open.set(true);
                         },
                     }
+                }
+            }
+
+            // --- Minimap (bottom-right viewport navigator) ---
+            // Floats above the bottom chrome; auto-hidden when fully zoomed out
+            // (see `minimap_data`). Recentering keeps zoom and pans so the chosen
+            // world point maps to the canvas center.
+            if let Some((world_bounds, visible)) = minimap_data {
+                Minimap {
+                    world_bounds,
+                    visible,
+                    on_recenter: move |(wx, wy): (f64, f64)| {
+                        let (cw, ch) = *canvas_size.read();
+                        let mut vp = viewport.write();
+                        let zoom = vp.zoom;
+                        vp.pan_x = cw / 2.0 - wx * zoom;
+                        vp.pan_y = ch / 2.0 - wy * zoom;
+                    },
                 }
             }
 

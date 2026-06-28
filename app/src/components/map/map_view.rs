@@ -474,11 +474,18 @@ pub fn MapView() -> Element {
                 }
             }
 
-            // Frame carries the visual inset as padding so the svg can fill a
-            // definite box. An <svg> flex child does not reliably stretch on the
-            // cross axis, so it needs a concrete size for `get_client_rect` (and
-            // thus fit-to-content) to measure the real card dimensions.
-            div { class: "map-canvas-frame",
+            // Frame is the svg's positioning context and the measured element:
+            // the svg fills it via absolute inset:0, so the frame's rect is the
+            // canvas rect. We measure the div (reliable) rather than the svg,
+            // whose percentage size collapses to its intrinsic 300x150 on WebKit.
+            // Because the svg exactly overlaps the frame, the frame origin is the
+            // svg origin, so `canvas_xy` pointer math stays correct.
+            div {
+                class: "map-canvas-frame",
+                onmounted: move |evt| {
+                    canvas_element.set(Some(evt.data()));
+                    refresh_origin(());
+                },
                 svg {
                     class: "map-canvas",
                     "data-placing": is_placing,
@@ -487,11 +494,6 @@ pub fn MapView() -> Element {
                     // Touch-action none lets us own panning/pinching instead of
                     // the browser scrolling/zooming the page.
                     style: "touch-action: none;",
-
-                onmounted: move |evt| {
-                    canvas_element.set(Some(evt.data()));
-                    refresh_origin(());
-                },
 
                 // --- Wheel zoom (desktop) ---
                 onwheel: move |evt| {

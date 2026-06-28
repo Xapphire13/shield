@@ -384,12 +384,6 @@ pub fn MapView() -> Element {
                 "#,
             );
             if let Ok(values) = raf.recv::<Vec<f64>>().await {
-                // TEMPORARY debug: trace the post-layout measurement + fit.
-                dioxus::logger::tracing::info!(
-                    "map deferred fit: measured={values:?} placed={} fitted={}",
-                    placed.len(),
-                    *fitted.peek()
-                );
                 if values.len() == 2 && values[0] > 0.0 && values[1] > 0.0 && !*fitted.peek() {
                     if let Some(bounds) = content_bounds(&placed) {
                         viewport.set(Viewport::fit_to_content(bounds, values[0], values[1]));
@@ -452,14 +446,6 @@ pub fn MapView() -> Element {
         .as_ref()
         .and_then(|id| display_cameras.iter().find(|c| &c.camera_id == id).cloned());
 
-    // TEMPORARY debug readout: read the underlying signals live so the overlay
-    // updates as the rect resolves / the fit runs. Remove once diagnosed.
-    let (dbg_w, dbg_h) = *canvas_size.read();
-    let dbg_placed = placed.len();
-    let dbg_bounds = content_bounds(&placed);
-    let dbg_fitted = *fitted.read();
-    let dbg_viewport = *viewport.read();
-
     rsx! {
         div { class: "primary-view map-view",
             // --- Top bar (title, undo/redo, edit toggle) ---
@@ -510,18 +496,6 @@ pub fn MapView() -> Element {
                     } else {
                         "Edit"
                     }
-                }
-            }
-
-            // TEMPORARY on-screen debug readout for diagnosing fit-to-content.
-            // Remove once the canvas-size / bounds / viewport values are known.
-            div { class: "map-debug",
-                div { "canvas_size: {dbg_w} x {dbg_h}" }
-                div { "placed: {dbg_placed}" }
-                div { "bounds: {dbg_bounds:?}" }
-                div { "fitted: {dbg_fitted}" }
-                div {
-                    "viewport: pan ({dbg_viewport.pan_x}, {dbg_viewport.pan_y}) zoom {dbg_viewport.zoom}"
                 }
             }
 

@@ -325,34 +325,47 @@ pub fn MapView() -> Element {
 
     let placed = map.as_ref().map(|m| m.cameras.clone()).unwrap_or_default();
 
-    // Fit and center the placed cameras once, as soon as the map has loaded with
-    // content and the canvas size is known. `placed` is a plain snapshot (not a
-    // signal), so `use_reactive` is needed to re-run this when it changes (the
-    // map loading / cameras changing); reading `canvas_size` inside also re-runs
-    // it once the size resolves. Whichever of those happens last performs the
-    // actual fit. The `fitted` guard ensures it fits exactly once and never
-    // fights later user pan/zoom; an empty map keeps the default viewport.
+    // Fit and center the placed cameras exactly once, after layout has settled.
+    //
+    // On a hard / deep-link load the map data can arrive before the first styled
+    // layout settles, so measuring synchronously here would fit against a
+    // transient pre-layout size and the one-time `fitted` lock would freeze that
+    // wrong value. To avoid that we defer to a post-layout animation frame and
+    // measure the frame *fresh* there (double RAF: one frame to apply layout,
+    // one to be safe), so the fit always uses the settled size. `fitted` still
+    // locks it to a single fit (now the correct one) and never fights later user
+    // pan/zoom; an empty map keeps the default viewport. `use_reactive` re-runs
+    // this when the cameras change (map load); guard reads use `peek` so the
+    // effect depends only on `placed`.
     use_effect(use_reactive((&placed,), move |(placed,)| {
-        let already = *fitted.read();
-        let (w, h) = *canvas_size.read();
-        let bounds = content_bounds(&placed);
-        let fit = bounds.map(|b| Viewport::fit_to_content(b, w, h));
-        // TEMPORARY debug: trace each effect run so the console shows the
-        // sequence of {map loaded, canvas sized} and what the fit computes.
-        dioxus::logger::tracing::info!(
-            "map fit effect: canvas_size={w}x{h} placed={} bounds={bounds:?} fitted={already} result={fit:?}",
-            placed.len()
-        );
-        if already {
+        if *fitted.peek() || placed.is_empty() {
             return;
         }
-        if w <= 0.0 || h <= 0.0 {
-            return;
-        }
-        if let Some(viewport_fit) = fit {
-            viewport.set(viewport_fit);
-            fitted.set(true);
-        }
+        spawn(async move {
+            let mut raf = document::eval(
+                r#"
+                requestAnimationFrame(() => requestAnimationFrame(() => {
+                    const el = document.getElementById('map-canvas-frame');
+                    const r = el ? el.getBoundingClientRect() : { width: 0, height: 0 };
+                    dioxus.send([r.width, r.height]);
+                }));
+                "#,
+            );
+            if let Ok(values) = raf.recv::<Vec<f64>>().await {
+                // TEMPORARY debug: trace the post-layout measurement + fit.
+                dioxus::logger::tracing::info!(
+                    "map deferred fit: measured={values:?} placed={} fitted={}",
+                    placed.len(),
+                    *fitted.peek()
+                );
+                if values.len() == 2 && values[0] > 0.0 && values[1] > 0.0 && !*fitted.peek() {
+                    if let Some(bounds) = content_bounds(&placed) {
+                        viewport.set(Viewport::fit_to_content(bounds, values[0], values[1]));
+                        fitted.set(true);
+                    }
+                }
+            }
+        });
     }));
 
     // Resolve a placed camera's display name, or `None` when its reference is an

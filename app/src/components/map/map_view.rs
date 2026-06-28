@@ -12,6 +12,7 @@ use crate::components::map::edit_toolbar::{CameraPicker, EditToolbar};
 use crate::components::map::map_camera::{MARKER_RADIUS_CM, MapCameraMarker};
 use crate::components::map::minimap::Minimap;
 use crate::components::map::unplaced_badge::UnplacedBadge;
+use crate::components::map::zoom_controls::ZoomControls;
 use crate::hooks::{UseCamerasResult, UseMapResult, use_cameras, use_map};
 
 /// The single map edited in v1. The service lazily returns an empty map for any
@@ -66,6 +67,11 @@ const MAX_ZOOM: f64 = 5.0;
 
 /// Multiplier applied per wheel "click" / pinch step.
 const WHEEL_ZOOM_STEP: f64 = 0.0015;
+
+/// Multiplier applied per click of the `+` / `−` zoom buttons. `+` multiplies
+/// the current zoom by this; `−` divides by it. The existing zoom clamp keeps it
+/// within `MIN_ZOOM`/`MAX_ZOOM`.
+const BUTTON_ZOOM_STEP: f64 = 1.2;
 
 /// Smallest range a camera cone may be dragged to (centimeters).
 const MIN_RANGE_CM: i32 = 50;
@@ -987,6 +993,23 @@ pub fn MapView() -> Element {
             // open inspector / picker simply renders over it.
             if !unplaced.is_empty() {
                 UnplacedBadge { count: unplaced.len() }
+            }
+
+            // --- Zoom controls (persistent, below the minimap) ---
+            // Always rendered, even when the minimap auto-hides: zooming in with
+            // `+` can bring the hidden minimap back. The `+` / `−` buttons zoom
+            // around the canvas center (so the center stays put), clamped by the
+            // existing zoom clamp.
+            ZoomControls {
+                percent: (viewport.read().zoom * 100.0).round() as i64,
+                on_zoom_out: move |_| {
+                    let (cw, ch) = *canvas_size.read();
+                    viewport.write().zoom_at(1.0 / BUTTON_ZOOM_STEP, cw / 2.0, ch / 2.0);
+                },
+                on_zoom_in: move |_| {
+                    let (cw, ch) = *canvas_size.read();
+                    viewport.write().zoom_at(BUTTON_ZOOM_STEP, cw / 2.0, ch / 2.0);
+                },
             }
 
             // --- Camera picker sheet ---

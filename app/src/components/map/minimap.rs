@@ -33,8 +33,10 @@ fn minimap_rect() -> Option<(f64, f64, f64, f64)> {
 /// rescales it. The currently-visible world region is shown as the viewfinder:
 /// a translucent rectangle while it overlaps the box (clipped to the box), or a
 /// chevron pinned to the border pointing toward it once it is fully off-map.
-/// Dragging inside the minimap recenters the main view on the corresponding
-/// world point, which works in both states.
+/// Panning the main view is done by grabbing and dragging the viewfinder
+/// rectangle; a pointer-down that misses it does nothing. When the viewfinder is
+/// fully off-map (chevron showing) there is no recenter interaction — the
+/// off-map recenter UX is intentionally deferred.
 ///
 /// The host keeps its `Viewport` private and passes only plain values: the outer
 /// box (`world_bounds`), the visible world rect (`visible`), and an `on_recenter`
@@ -88,25 +90,29 @@ pub fn Minimap(
 
     // Off-map chevron: snapped to one of 8 fixed directions from the viewfinder
     // center's position relative to the box, pinned to the matching edge/corner.
-    let chevron = (!overlaps).then(|| {
-        let vcx = (vx0 + vx1) / 2.0;
-        let vcy = (vy0 + vy1) / 2.0;
-        chevron_path(vcx, vcy, box_w, box_h)
-    });
+    let chevron =
+        (!overlaps).then(|| chevron_path((vx0 + vx1) / 2.0, (vy0 + vy1) / 2.0, box_w, box_h));
 
-    // Translate a minimap-relative pixel position back to a world point and ask
-    // the host to recenter on it. Centering the visible rect on the pointer is
-    // the simplest mapping and feels natural for a grab-and-drag navigator, and
-    // it works whether the viewfinder is on- or off-map (dragging toward the
-    // content brings it back).
+    // Translate a minimap-relative pixel point (the desired viewfinder center)
+    // back to a world point and ask the host to recenter the main view on it.
     let recenter_from = move |px: f64, py: f64| {
         let wx = wmin_x + px / scale;
         let wy = wmin_y + py / scale;
         on_recenter.call((wx, wy));
     };
 
-    // Whether a drag is in progress; while held, pointer moves keep recentering.
-    let mut dragging = use_signal(|| false);
+    // Viewfinder center in minimap px (only meaningful while it overlaps the box,
+    // i.e. while it is grabbable). Used for hit-testing the grab and to hold the
+    // pointer's offset from the center so the viewfinder tracks the pointer
+    // without jumping on grab.
+    let vcx = (vx0 + vx1) / 2.0;
+    let vcy = (vy0 + vy1) / 2.0;
+
+    // While a drag is in progress, the grab offset (pointer minus viewfinder
+    // center, in minimap px) captured on pointer-down; `None` when not dragging.
+    // Holding the offset keeps the grabbed point under the pointer for the whole
+    // drag instead of snapping the center to the pointer.
+    let mut grab_offset = use_signal(|| None::<(f64, f64)>);
 
     // Convert a pointer event into a minimap-relative pixel position by measuring
     // the minimap's own rect. `client_coordinates` is viewport-relative and
@@ -118,6 +124,11 @@ pub fn Minimap(
         let client = evt.client_coordinates();
         Some((client.x - left, client.y - top))
     };
+
+    // Hit-test a minimap-relative pixel point against the (unclipped) viewfinder
+    // rect. Only the on-box viewfinder is grabbable; when it is fully off-map the
+    // chevron is showing and there is no drag interaction (deferred).
+    let in_viewfinder = move |px: f64, py: f64| px >= vx0 && px <= vx1 && py >= vy0 && py <= vy1;
 
     rsx! {
         svg {
@@ -132,20 +143,28 @@ pub fn Minimap(
             height: "{box_h}",
             style: "touch-action: none;",
             onpointerdown: move |evt| {
-                dragging.set(true);
-                if let Some((px, py)) = pointer_px(&evt.data()) {
-                    recenter_from(px, py);
+                // Only a grab that lands on the viewfinder rect starts a drag; a
+                // press elsewhere in the minimap does nothing. (When the
+                // viewfinder is off-map the chevron shows and there is no grab —
+                // the off-map recenter UX is intentionally deferred.)
+                if overlaps
+                    && let Some((px, py)) = pointer_px(&evt.data())
+                    && in_viewfinder(px, py)
+                {
+                    grab_offset.set(Some((px - vcx, py - vcy)));
                 }
             },
             onpointermove: move |evt| {
-                if *dragging.read()
+                // Drag: keep the grabbed point under the pointer by moving the
+                // viewfinder center to `pointer - offset`, then recenter on it.
+                if let Some((ox, oy)) = *grab_offset.read()
                     && let Some((px, py)) = pointer_px(&evt.data())
                 {
-                    recenter_from(px, py);
+                    recenter_from(px - ox, py - oy);
                 }
             },
-            onpointerup: move |_| dragging.set(false),
-            onpointercancel: move |_| dragging.set(false),
+            onpointerup: move |_| grab_offset.set(None),
+            onpointercancel: move |_| grab_offset.set(None),
 
             // Outer box: the overall map bounds.
             rect {

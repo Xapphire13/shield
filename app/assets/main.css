@@ -62,8 +62,23 @@ body {
     padding-bottom: calc(16px + var(--bottom-toolbar-height));
 }
 
-.home-container {
-    min-height: 100vh;
+/* List view: stack a flush top bar above a scrollable, inset content area,
+   mirroring the map view's bar + content stacking. Overrides the shared
+   .primary-view inset so the bar can sit flush against the page edges; the
+   content carries the inset instead. */
+.list-view {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+}
+
+.list-view__content {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 16px;
+    padding-bottom: calc(16px + var(--bottom-toolbar-height));
 }
 
 .selectable-row {
@@ -505,32 +520,46 @@ ul {
     cursor: crosshair;
 }
 
-/* Top bar overlaying the canvas: title centered, edit toggle top-right, and
-   undo/redo controls top-left while editing. */
-/* Solid bar in normal flow above the canvas (does not overlap map content). */
-.map-topbar {
+/* Shared top bar for the primary views: a centered title flanked by optional
+   side controls (e.g. the map's undo/redo on the left and Edit toggle on the
+   right). A solid bar in normal flow above the view's content. */
+.top-bar {
     /* Equal-width side zones keep the title centered on the whole bar
-       regardless of the side controls' widths: left = history, center = title,
-       right = edit toggle. The left zone is always rendered (empty in view
-       mode) so the two 1fr columns stay equal across modes. */
+       regardless of the side controls' widths: start | title | actions. Both
+       side zones are always rendered (empty when a view supplies no controls)
+       so the two 1fr columns stay equal. */
     display: grid;
     grid-template-columns: 1fr auto 1fr;
     align-items: center;
     gap: 8px;
     padding: 8px 16px;
-    /* Fixed height (sized to the controls) so toggling Edit — which shows/hides
-       the undo/redo buttons — never resizes the bar. */
+    /* Fixed height (sized to the controls) so showing/hiding side controls —
+       e.g. the map's undo/redo on Edit toggle — never resizes the bar. */
     min-height: 52px;
     background-color: var(--color-surface);
     border-bottom: 1px solid var(--color-border);
 }
 
-.map-topbar__history {
+.top-bar__start {
     justify-self: start;
     display: flex;
     gap: 4px;
 }
 
+.top-bar__actions {
+    justify-self: end;
+    display: flex;
+    gap: 4px;
+}
+
+.top-bar__title {
+    justify-self: center;
+    text-align: center;
+    font-weight: bold;
+    text-shadow: 0 1px 2px var(--color-shadow);
+}
+
+/* Map-specific controls hosted in the top bar's side zones. */
 .map-topbar__icon {
     display: flex;
     align-items: center;
@@ -553,15 +582,7 @@ ul {
     opacity: 0.5;
 }
 
-.map-topbar__title {
-    justify-self: center;
-    text-align: center;
-    font-weight: bold;
-    text-shadow: 0 1px 2px var(--color-shadow);
-}
-
 .map-topbar__edit {
-    justify-self: end;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     color: var(--color-text);

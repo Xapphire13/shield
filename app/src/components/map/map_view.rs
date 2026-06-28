@@ -5,6 +5,7 @@ use shield_models::{FieldOfView, MapCamera, Point};
 use wasm_bindgen::JsCast;
 use wasm_bindgen::closure::Closure;
 
+use crate::components::layout::TopBar;
 use crate::components::map::camera_info::CameraInfo;
 use crate::components::map::camera_inspector::CameraInspector;
 use crate::components::map::edit_toolbar::{CameraPicker, EditToolbar};
@@ -552,11 +553,12 @@ pub fn MapView() -> Element {
         div { class: "primary-view map-view",
             // --- Top bar (title, undo/redo, edit toggle) ---
             // Rendered before the canvas so it sits in normal flow above it.
-            div { class: "map-topbar",
-                // Left zone is always rendered (empty in view mode) so the grid
-                // keeps three cells and its equal side columns stay balanced,
-                // keeping the title centered across modes.
-                div { class: "map-topbar__history",
+            // Undo/redo (edit mode only) go in the start zone; the Edit/Done
+            // toggle goes in the actions zone. The shared TopBar centers the
+            // title regardless of the side controls.
+            TopBar {
+                title: if map_loading || cameras_loading { "Loading map…" } else { "Map" },
+                start: rsx! {
                     if is_editing {
                         button {
                             class: "map-topbar__icon",
@@ -571,38 +573,29 @@ pub fn MapView() -> Element {
                             Icon { width: 18, height: 18, icon: FiCornerUpRight }
                         }
                     }
-                }
-
-                span { class: "map-topbar__title",
-                    if map_loading || cameras_loading {
-                        "Loading map…"
-                    } else {
-                        "Map"
-                    }
-                }
-
-                button {
-                    class: "map-topbar__edit",
-                    "data-active": is_editing,
-                    onclick: move |_| {
-                        let next = !*editing.read();
-                        editing.set(next);
-                        if next {
-                            // Entering edit mode: the view-mode info card has no
-                            // place here, and edit taps own selection.
-                            info_camera_id.set(None);
+                },
+                actions: rsx! {
+                    button {
+                        class: "map-topbar__edit",
+                        "data-active": is_editing,
+                        onclick: move |_| {
+                            let next = !*editing.read();
+                            editing.set(next);
+                            if next {
+                                info_camera_id.set(None);
+                            } else {
+                                selection.set(None);
+                                placing.set(None);
+                                picker_open.set(false);
+                            }
+                        },
+                        if is_editing {
+                            "Done"
                         } else {
-                            selection.set(None);
-                            placing.set(None);
-                            picker_open.set(false);
+                            "Edit"
                         }
-                    },
-                    if is_editing {
-                        "Done"
-                    } else {
-                        "Edit"
                     }
-                }
+                },
             }
 
             // Frame is the svg's positioning context and the measured element:

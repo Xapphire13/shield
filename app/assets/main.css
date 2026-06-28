@@ -733,14 +733,15 @@ ul {
     accent-color: var(--color-accent);
 }
 
-/* Bottom-right viewport navigator. Floats over the canvas and is lifted clear
-   of the bottom chrome (edit tool strip / inspector / global nav) by the
-   bottom-toolbar height plus the canvas's own inset, so it never collides. */
+/* Bottom-right viewport navigator. Floats over the canvas, lifted above the
+   short edit tool strip by the bottom-toolbar height plus the canvas inset. Its
+   z-index sits below the bottom chrome, so a taller open sheet (inspector /
+   picker) simply renders over it. */
 .map-minimap {
     position: fixed;
     right: 24px;
     bottom: calc(var(--bottom-toolbar-height) + 24px);
-    z-index: var(--z-floating-actions);
+    z-index: calc(var(--z-bottom-toolbar) - 1);
     background-color: var(--color-overlay);
     border: 1px solid var(--color-border-strong);
     border-radius: 4px;

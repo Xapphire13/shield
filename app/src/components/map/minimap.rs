@@ -4,8 +4,8 @@ use dioxus::prelude::*;
 /// from the content bounds' aspect ratio so the minimap never distorts the map.
 const MINIMAP_MAX_EDGE: f64 = 160.0;
 
-/// Arm length of the off-map chevron glyph, in minimap pixels (the `s` in the
-/// `‹`/`›`/`^`/`v` shape — each arm runs `s` px back from the tip).
+/// Arm length of the off-map chevron glyph, in minimap pixels — each of the two
+/// arms runs this far back from the tip of the `‹`/`›`/`^`/`v` shape.
 const CHEVRON_ARM: f64 = 5.0;
 
 /// How far the chevron tip is inset from the box edge it hugs, in minimap pixels.
@@ -215,15 +215,19 @@ fn chevron_path(vcx: f64, vcy: f64, box_w: f64, box_h: f64) -> String {
     // Tip position: pin to the off edge(s); slide along the on-axis to track the
     // viewfinder, clamped to stay inside the box with the inset.
     let lo = CHEVRON_INSET;
-    let tip_x = match sx {
-        s if s < 0.0 => CHEVRON_INSET,
-        s if s > 0.0 => box_w - CHEVRON_INSET,
-        _ => vcx.clamp(lo, box_w - lo),
+    let tip_x = if sx < 0.0 {
+        CHEVRON_INSET
+    } else if sx > 0.0 {
+        box_w - CHEVRON_INSET
+    } else {
+        vcx.clamp(lo, box_w - lo)
     };
-    let tip_y = match sy {
-        s if s < 0.0 => CHEVRON_INSET,
-        s if s > 0.0 => box_h - CHEVRON_INSET,
-        _ => vcy.clamp(lo, box_h - lo),
+    let tip_y = if sy < 0.0 {
+        CHEVRON_INSET
+    } else if sy > 0.0 {
+        box_h - CHEVRON_INSET
+    } else {
+        vcy.clamp(lo, box_h - lo)
     };
 
     // Point direction (unit for cardinals, diagonal for corners). At least one

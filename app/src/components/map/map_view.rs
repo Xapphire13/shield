@@ -227,7 +227,7 @@ fn content_bounds(cameras: &[MapCamera]) -> Option<(f64, f64, f64, f64)> {
 }
 
 /// Whether `outer` fully contains `inner` (both `(min_x, min_y, max_x, max_y)`).
-fn contains_bounds(outer: (f64, f64, f64, f64), inner: (f64, f64, f64, f64)) -> bool {
+fn fully_contains_bounds(outer: (f64, f64, f64, f64), inner: (f64, f64, f64, f64)) -> bool {
     outer.0 <= inner.0 && outer.1 <= inner.1 && outer.2 >= inner.2 && outer.3 >= inner.3
 }
 
@@ -501,7 +501,7 @@ pub fn MapView() -> Element {
             let (vmin_x, vmin_y) = vp.screen_to_world(0.0, 0.0);
             let (vmax_x, vmax_y) = vp.screen_to_world(canvas_w, canvas_h);
             let visible = (vmin_x, vmin_y, vmax_x, vmax_y);
-            if contains_bounds(visible, content) {
+            if fully_contains_bounds(visible, content) {
                 None
             } else {
                 Some((content, visible))

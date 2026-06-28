@@ -226,13 +226,6 @@ fn content_bounds(cameras: &[MapCamera]) -> Option<(f64, f64, f64, f64)> {
     Some((min_x, min_y, max_x, max_y))
 }
 
-/// Smallest world rectangle `(min_x, min_y, max_x, max_y)` containing both
-/// inputs. Used to grow the minimap's outer box so it always contains the
-/// visible rect, even when the user pans into empty space past the content.
-fn union_bounds(a: (f64, f64, f64, f64), b: (f64, f64, f64, f64)) -> (f64, f64, f64, f64) {
-    (a.0.min(b.0), a.1.min(b.1), a.2.max(b.2), a.3.max(b.3))
-}
-
 /// Whether `outer` fully contains `inner` (both `(min_x, min_y, max_x, max_y)`).
 fn contains_bounds(outer: (f64, f64, f64, f64), inner: (f64, f64, f64, f64)) -> bool {
     outer.0 <= inner.0 && outer.1 <= inner.1 && outer.2 >= inner.2 && outer.3 >= inner.3
@@ -495,12 +488,12 @@ pub fn MapView() -> Element {
 
     // --- Minimap inputs ---
     // The minimap only renders when there is content to navigate AND the canvas
-    // has been measured (non-zero size). `visible` is the world rect currently
-    // on screen, derived from the viewport + canvas size; `world_bounds` is the
-    // content box grown to always contain `visible` so the indicator never spills
-    // outside the outer box when panning into empty space. Auto-hide: skip it
-    // when fully zoomed out (the visible rect already contains all the content,
-    // so there is nothing off-screen to navigate to).
+    // has been measured (non-zero size). The outer box is the content bounds and
+    // stays fixed as the user pans (its scale only changes when the content
+    // itself does); `visible` is the world rect currently on screen, derived
+    // from the viewport + canvas size, and may extend beyond the box. Auto-hide:
+    // skip it when fully zoomed out (the visible rect already contains all the
+    // content, so there is nothing off-screen to navigate to).
     let (canvas_w, canvas_h) = *canvas_size.read();
     let minimap_data = if canvas_w > 0.0 && canvas_h > 0.0 {
         content_bounds(&display_cameras).and_then(|content| {
@@ -511,7 +504,7 @@ pub fn MapView() -> Element {
             if contains_bounds(visible, content) {
                 None
             } else {
-                Some((union_bounds(content, visible), visible))
+                Some((content, visible))
             }
         })
     } else {

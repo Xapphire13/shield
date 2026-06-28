@@ -765,3 +765,12 @@ ul {
     stroke: var(--color-accent-border);
     stroke-width: 1;
 }
+
+/* Off-map indicator: stands in for the viewfinder when it is fully off the
+   minimap, pinned to the border and pointing toward it. Same accent treatment
+   as the viewfinder rect. */
+.map-minimap__chevron {
+    fill: rgba(176, 73, 255, 0.6);
+    stroke: var(--color-accent-border);
+    stroke-width: 1;
+}

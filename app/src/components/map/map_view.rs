@@ -327,15 +327,24 @@ pub fn MapView() -> Element {
     // actual fit. The `fitted` guard ensures it fits exactly once and never
     // fights later user pan/zoom; an empty map keeps the default viewport.
     use_effect(use_reactive((&placed,), move |(placed,)| {
-        if *fitted.read() {
+        let already = *fitted.read();
+        let (w, h) = *canvas_size.read();
+        let bounds = content_bounds(&placed);
+        let fit = bounds.map(|b| Viewport::fit_to_content(b, w, h));
+        // TEMPORARY debug: trace each effect run so the console shows the
+        // sequence of {map loaded, canvas sized} and what the fit computes.
+        dioxus::logger::tracing::info!(
+            "map fit effect: canvas_size={w}x{h} placed={} bounds={bounds:?} fitted={already} result={fit:?}",
+            placed.len()
+        );
+        if already {
             return;
         }
-        let (w, h) = *canvas_size.read();
         if w <= 0.0 || h <= 0.0 {
             return;
         }
-        if let Some(bounds) = content_bounds(&placed) {
-            viewport.set(Viewport::fit_to_content(bounds, w, h));
+        if let Some(viewport_fit) = fit {
+            viewport.set(viewport_fit);
             fitted.set(true);
         }
     }));
@@ -392,6 +401,14 @@ pub fn MapView() -> Element {
         .as_ref()
         .and_then(|id| display_cameras.iter().find(|c| &c.camera_id == id).cloned());
 
+    // TEMPORARY debug readout: read the underlying signals live so the overlay
+    // updates as the rect resolves / the fit runs. Remove once diagnosed.
+    let (dbg_w, dbg_h) = *canvas_size.read();
+    let dbg_placed = placed.len();
+    let dbg_bounds = content_bounds(&placed);
+    let dbg_fitted = *fitted.read();
+    let dbg_viewport = *viewport.read();
+
     rsx! {
         div { class: "primary-view map-view",
             // --- Top bar (title, undo/redo, edit toggle) ---
@@ -442,6 +459,18 @@ pub fn MapView() -> Element {
                     } else {
                         "Edit"
                     }
+                }
+            }
+
+            // TEMPORARY on-screen debug readout for diagnosing fit-to-content.
+            // Remove once the canvas-size / bounds / viewport values are known.
+            div { class: "map-debug",
+                div { "canvas_size: {dbg_w} x {dbg_h}" }
+                div { "placed: {dbg_placed}" }
+                div { "bounds: {dbg_bounds:?}" }
+                div { "fitted: {dbg_fitted}" }
+                div {
+                    "viewport: pan ({dbg_viewport.pan_x}, {dbg_viewport.pan_y}) zoom {dbg_viewport.zoom}"
                 }
             }
 

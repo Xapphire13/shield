@@ -362,6 +362,24 @@ ul {
     color: var(--color-accent);
 }
 
+/* TEMPORARY: on-screen debug readout for diagnosing fit-to-content. Remove
+   along with the .map-debug element in MapView once diagnosed. */
+.map-debug {
+    position: fixed;
+    top: 60px;
+    left: 8px;
+    z-index: 9999;
+    padding: 6px 8px;
+    background: rgba(0, 0, 0, 0.7);
+    color: #0f0;
+    font-family: monospace;
+    font-size: 11px;
+    line-height: 1.4;
+    border-radius: 4px;
+    pointer-events: none;
+    white-space: pre;
+}
+
 .map-view {
     position: relative;
     height: 100vh;

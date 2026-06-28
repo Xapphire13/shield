@@ -47,6 +47,12 @@ pub fn MapCameraMarker(
     /// Fired on pointer-down on the range handle (sets FOV range).
     #[props(default)]
     on_range_pointer_down: Option<Callback<Event<PointerData>>>,
+    /// Fired on a click (press-release without a drag) on the marker body. The
+    /// host uses this in view mode to open a read-only info card; because a click
+    /// only fires when the pointer is released without panning, it does not
+    /// trigger on a pan gesture.
+    #[props(default)]
+    on_tap: Option<Callback<()>>,
 ) -> Element {
     let cx = camera.position.x as f64;
     let cy = camera.position.y as f64;
@@ -124,6 +130,14 @@ pub fn MapCameraMarker(
                         if let Some(cb) = on_body_pointer_down {
                             cb.call(evt);
                         }
+                    }
+                },
+                // A click (press-release without a drag) opens the view-mode info
+                // card. The host ignores this in edit mode, where the pointer-down
+                // selection flow above owns taps.
+                onclick: move |_| {
+                    if let Some(cb) = on_tap {
+                        cb.call(());
                     }
                 },
             }

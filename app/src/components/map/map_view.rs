@@ -5,6 +5,7 @@ use shield_models::{FieldOfView, MapCamera, Point};
 use wasm_bindgen::JsCast;
 use wasm_bindgen::closure::Closure;
 
+use crate::components::map::camera_info::CameraInfo;
 use crate::components::map::camera_inspector::CameraInspector;
 use crate::components::map::edit_toolbar::{CameraPicker, EditToolbar};
 use crate::components::map::map_camera::{MARKER_RADIUS_CM, MapCameraMarker};
@@ -351,6 +352,10 @@ pub fn MapView() -> Element {
 
     let mut editing = use_signal(|| false);
     let mut selection = use_signal(|| None::<String>);
+    // The placed camera whose read-only info card is open in view mode, by
+    // placed-reference id. Only used outside edit mode (edit mode owns taps via
+    // the selection flow).
+    let mut info_camera_id = use_signal(|| None::<String>);
     // The camera id chosen in the picker and awaiting a placement tap.
     let mut placing = use_signal(|| None::<String>);
     let mut picker_open = use_signal(|| false);
@@ -486,6 +491,15 @@ pub fn MapView() -> Element {
         .as_ref()
         .and_then(|id| display_cameras.iter().find(|c| &c.camera_id == id).cloned());
 
+    // View-mode read-only info card target. `info_camera_id` is a placed-reference
+    // id; `info_open` is whether a card is open at all, and `info_camera` resolves
+    // that id against the camera list to `Some(Camera)` for a live camera or
+    // `None` for an orphan (deleted underlying camera).
+    let info_open = info_camera_id.read().clone();
+    let info_camera = info_open
+        .as_ref()
+        .and_then(|id| camera_list.iter().find(|c| &c.id == id).cloned());
+
     // --- Minimap inputs ---
     // The minimap only renders when there is content to navigate AND the canvas
     // has been measured (non-zero size). The outer box is the content bounds and
@@ -550,7 +564,11 @@ pub fn MapView() -> Element {
                     onclick: move |_| {
                         let next = !*editing.read();
                         editing.set(next);
-                        if !next {
+                        if next {
+                            // Entering edit mode: the view-mode info card has no
+                            // place here, and edit taps own selection.
+                            info_camera_id.set(None);
+                        } else {
                             selection.set(None);
                             placing.set(None);
                             picker_open.set(false);
@@ -614,6 +632,11 @@ pub fn MapView() -> Element {
                     }
                     if is_editing {
                         selection.set(None);
+                    } else {
+                        // A press on empty canvas dismisses the view-mode info
+                        // card. The marker stops propagation, so this only fires
+                        // for taps that miss every camera.
+                        info_camera_id.set(None);
                     }
                     gesture.set(Gesture::Pan { last_x: cx, last_y: cy });
                 },
@@ -809,6 +832,18 @@ pub fn MapView() -> Element {
                                             gesture.set(Gesture::RangeCamera { camera_id: id.clone() });
                                         }
                                     },
+                                    on_tap: {
+                                        // View mode only: open the read-only info
+                                        // card for this camera. In edit mode the
+                                        // pointer-down selection flow owns taps, so
+                                        // ignore this here.
+                                        let id = id.clone();
+                                        move |_| {
+                                            if !is_editing {
+                                                info_camera_id.set(Some(id.clone()));
+                                            }
+                                        }
+                                    },
                                 }
                             }
                         }
@@ -862,6 +897,17 @@ pub fn MapView() -> Element {
                             picker_open.set(true);
                         },
                     }
+                }
+            }
+
+            // --- View-mode read-only info card ---
+            // Shown when a camera is tapped outside edit mode. It floats above the
+            // global List/Map bottom nav (so the nav stays reachable) and is
+            // cleared on close, empty-canvas tap, or on entering edit mode.
+            if !is_editing && info_open.is_some() {
+                CameraInfo {
+                    camera: info_camera.clone(),
+                    on_close: move |_| info_camera_id.set(None),
                 }
             }
 

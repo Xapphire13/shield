@@ -733,6 +733,84 @@ ul {
     accent-color: var(--color-accent);
 }
 
+/* Read-only info card for a camera tapped on the map in view mode. Mirrors the
+   edit-mode inspector's surface styling, but floats clear of the global bottom
+   navigation (view mode keeps the nav reachable) instead of sitting flush at the
+   bottom edge. */
+.camera-info {
+    position: fixed;
+    left: 16px;
+    right: 16px;
+    bottom: calc(var(--bottom-toolbar-height) + 16px);
+    z-index: calc(var(--z-bottom-toolbar) + 1);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    box-shadow: 0 8px 24px var(--color-shadow);
+    padding: 16px;
+}
+
+.camera-info__header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.camera-info__title {
+    flex: 1;
+    font-weight: bold;
+    font-size: 1.1rem;
+}
+
+.camera-info__title[data-orphaned="true"] {
+    color: var(--color-text-muted);
+    font-style: italic;
+}
+
+.camera-info__note {
+    color: var(--color-text-muted);
+    font-size: 0.85rem;
+}
+
+.camera-info__rows {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.camera-info__row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 0.9rem;
+}
+
+.camera-info__label {
+    color: var(--color-text-muted);
+}
+
+.camera-info__value[data-recording="true"] {
+    color: var(--color-recording);
+    font-weight: bold;
+}
+
+.camera-info__tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.camera-info__tag {
+    background-color: var(--color-surface-row);
+    border-radius: 999px;
+    padding: 2px 10px;
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+}
+
 /* Bottom-right viewport navigator. Floats over the canvas, lifted above the
    short edit tool strip by the bottom-toolbar height plus the canvas inset. Its
    z-index sits below the bottom chrome, so a taller open sheet (inspector /

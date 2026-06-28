@@ -78,6 +78,7 @@ async fn main() {
         .layer(
             CorsLayer::new()
                 .allow_origin(Any)
+                .allow_methods(Any)
                 .allow_headers([CONTENT_TYPE, AUTHORIZATION]),
         )
         .layer(

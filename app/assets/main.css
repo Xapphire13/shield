@@ -493,18 +493,24 @@ ul {
    undo/redo controls top-left while editing. */
 /* Solid bar in normal flow above the canvas (does not overlap map content). */
 .map-topbar {
-    display: flex;
+    /* Equal-width side zones keep the title centered on the whole bar
+       regardless of the side controls' widths: left = history, center = title,
+       right = edit toggle. The left zone is always rendered (empty in view
+       mode) so the two 1fr columns stay equal across modes. */
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
     align-items: center;
     gap: 8px;
     padding: 8px 16px;
-    /* Fixed height (sized to the controls) and centered children so toggling
-       Edit — which shows/hides the undo/redo buttons — never resizes the bar. */
+    /* Fixed height (sized to the controls) so toggling Edit — which shows/hides
+       the undo/redo buttons — never resizes the bar. */
     min-height: 52px;
     background-color: var(--color-surface);
     border-bottom: 1px solid var(--color-border);
 }
 
 .map-topbar__history {
+    justify-self: start;
     display: flex;
     gap: 4px;
 }
@@ -532,13 +538,14 @@ ul {
 }
 
 .map-topbar__title {
-    flex: 1;
+    justify-self: center;
     text-align: center;
     font-weight: bold;
     text-shadow: 0 1px 2px var(--color-shadow);
 }
 
 .map-topbar__edit {
+    justify-self: end;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     color: var(--color-text);

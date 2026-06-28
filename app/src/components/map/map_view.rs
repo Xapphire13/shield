@@ -93,6 +93,68 @@ impl Viewport {
             self.pan_x, self.pan_y, self.zoom
         )
     }
+
+    /// A viewport that fits the world-space rectangle `(min_x, min_y, max_x,
+    /// max_y)` centered within a canvas of `canvas_w` x `canvas_h` pixels.
+    ///
+    /// Zoom is chosen so the content fits both axes (with a little headroom via
+    /// `FIT_MARGIN`) and clamped to the allowed range; pan then maps the content
+    /// center to the canvas center.
+    fn fit_to_content(bounds: (f64, f64, f64, f64), canvas_w: f64, canvas_h: f64) -> Self {
+        let (min_x, min_y, max_x, max_y) = bounds;
+        let content_w = (max_x - min_x).max(1.0);
+        let content_h = (max_y - min_y).max(1.0);
+
+        let zoom = ((canvas_w / content_w).min(canvas_h / content_h) * FIT_MARGIN)
+            .clamp(MIN_ZOOM, MAX_ZOOM);
+
+        let content_cx = (min_x + max_x) / 2.0;
+        let content_cy = (min_y + max_y) / 2.0;
+
+        Self {
+            pan_x: canvas_w / 2.0 - content_cx * zoom,
+            pan_y: canvas_h / 2.0 - content_cy * zoom,
+            zoom,
+        }
+    }
+}
+
+/// Fraction of the canvas the fitted content fills, leaving a margin around it.
+const FIT_MARGIN: f64 = 0.85;
+
+/// Minimum half-extent (cm) used when computing content bounds, so a single
+/// camera (or cluster) still yields a usable, non-degenerate fit.
+const MIN_CONTENT_HALF_EXTENT: f64 = 500.0;
+
+/// World-space bounding box `(min_x, min_y, max_x, max_y)` in centimeters that
+/// encloses every camera's reachable extent — each camera's `position` expanded
+/// by its `fov.range` in all directions — padded out to at least a minimum
+/// extent. Returns `None` for an empty set (callers keep the default view).
+///
+/// This is a deliberately simple, safe over-approximation (a square per camera
+/// rather than the exact cone) so it is cheap and reusable — e.g. a minimap can
+/// call it to size its world rect.
+fn content_bounds(cameras: &[MapCamera]) -> Option<(f64, f64, f64, f64)> {
+    if cameras.is_empty() {
+        return None;
+    }
+
+    let mut min_x = f64::INFINITY;
+    let mut min_y = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
+
+    for camera in cameras {
+        let reach = (camera.fov.range as f64).max(MIN_CONTENT_HALF_EXTENT);
+        let x = camera.position.x as f64;
+        let y = camera.position.y as f64;
+        min_x = min_x.min(x - reach);
+        min_y = min_y.min(y - reach);
+        max_x = max_x.max(x + reach);
+        max_y = max_y.max(y + reach);
+    }
+
+    Some((min_x, min_y, max_x, max_y))
 }
 
 /// Active gesture being tracked across pointer/touch events.
@@ -219,18 +281,24 @@ pub fn MapView() -> Element {
     let mut placing = use_signal(|| None::<String>);
     let mut picker_open = use_signal(|| false);
 
-    // Cached viewport-relative top-left of the canvas. All pointer math is done
-    // in canvas-relative coordinates derived from this origin (see `canvas_xy`).
-    // The rect is stable during a drag, so the cached value stays correct; it is
-    // captured on mount and refreshed on resize.
+    // Cached canvas geometry from its bounding rect: the viewport-relative
+    // top-left (origin) drives canvas-relative pointer math (see `canvas_xy`),
+    // and the size drives the initial fit-to-content. The rect is stable during
+    // a drag, so the cached values stay correct; both are captured on mount and
+    // refreshed on resize.
     let mut canvas_origin = use_signal(|| (0.0_f64, 0.0_f64));
+    let mut canvas_size = use_signal(|| (0.0_f64, 0.0_f64));
     let mut canvas_element = use_signal(|| None::<std::rc::Rc<MountedData>>);
+    // Whether the initial fit-to-content has been applied. Guards against
+    // re-fitting on later edits / pans / zooms.
+    let mut fitted = use_signal(|| false);
 
     let refresh_origin = use_callback(move |_: ()| {
         if let Some(element) = canvas_element.read().clone() {
             spawn(async move {
                 if let Ok(rect) = element.get_client_rect().await {
                     canvas_origin.set((rect.origin.x, rect.origin.y));
+                    canvas_size.set((rect.size.width, rect.size.height));
                 }
             });
         }
@@ -250,6 +318,27 @@ pub fn MapView() -> Element {
     });
 
     let placed = map.as_ref().map(|m| m.cameras.clone()).unwrap_or_default();
+
+    // Fit and center the placed cameras once, as soon as the map has loaded with
+    // content and the canvas size is known. Guarded by `fitted` so it never
+    // re-runs after edits/adds or once the user has panned/zoomed; an empty map
+    // keeps the default viewport.
+    {
+        let placed = placed.clone();
+        use_effect(move || {
+            if *fitted.read() {
+                return;
+            }
+            let (w, h) = *canvas_size.read();
+            if w <= 0.0 || h <= 0.0 {
+                return;
+            }
+            if let Some(bounds) = content_bounds(&placed) {
+                viewport.set(Viewport::fit_to_content(bounds, w, h));
+                fitted.set(true);
+            }
+        });
+    }
 
     // Resolve a placed camera's display name, or `None` when its reference is an
     // orphan (underlying camera deleted).
@@ -308,8 +397,11 @@ pub fn MapView() -> Element {
             // --- Top bar (title, undo/redo, edit toggle) ---
             // Rendered before the canvas so it sits in normal flow above it.
             div { class: "map-topbar",
-                if is_editing {
-                    div { class: "map-topbar__history",
+                // Left zone is always rendered (empty in view mode) so the grid
+                // keeps three cells and its equal side columns stay balanced,
+                // keeping the title centered across modes.
+                div { class: "map-topbar__history",
+                    if is_editing {
                         button {
                             class: "map-topbar__icon",
                             disabled: !can_undo,

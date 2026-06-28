@@ -2,8 +2,9 @@ use dioxus::prelude::*;
 use shield_models::{FieldOfView, MapCamera};
 
 /// Radius (in logical cm) of the camera marker dot. Drawn in logical/world
-/// space so it scales with zoom along with everything else.
-const MARKER_RADIUS_CM: f64 = 25.0;
+/// space so it scales with zoom along with everything else. Public so bounds
+/// computation can match the actual rendered marker extent.
+pub const MARKER_RADIUS_CM: f64 = 25.0;
 
 /// Renders a single placed [`MapCamera`]: a marker dot at its `position` plus a
 /// translucent field-of-view wedge. In edit mode the marker is interactive

@@ -5,7 +5,7 @@ use shield_models::{FieldOfView, MapCamera, Point};
 
 use crate::components::map::camera_inspector::CameraInspector;
 use crate::components::map::edit_toolbar::{CameraPicker, EditToolbar};
-use crate::components::map::map_camera::MapCameraMarker;
+use crate::components::map::map_camera::{MARKER_RADIUS_CM, MapCameraMarker};
 use crate::hooks::{UseCamerasResult, UseMapResult, use_cameras, use_map};
 
 /// The single map edited in v1. The service lazily returns an empty map for any
@@ -122,18 +122,27 @@ impl Viewport {
 /// Fraction of the canvas the fitted content fills, leaving a margin around it.
 const FIT_MARGIN: f64 = 0.85;
 
-/// Minimum half-extent (cm) used when computing content bounds, so a single
-/// camera (or cluster) still yields a usable, non-degenerate fit.
-const MIN_CONTENT_HALF_EXTENT: f64 = 500.0;
+/// Minimum half-extent (cm) folded around each camera so a single tiny cone
+/// still yields a non-degenerate (non-zero-size) box.
+const MIN_CONTENT_HALF_EXTENT: f64 = 50.0;
+
+/// Step (degrees) used when sampling a FOV arc for the bounding box. Small
+/// enough to tightly hug the arc, cheap enough for a handful of cameras.
+const ARC_SAMPLE_STEP_DEG: f64 = 2.0;
 
 /// World-space bounding box `(min_x, min_y, max_x, max_y)` in centimeters that
-/// encloses every camera's reachable extent — each camera's `position` expanded
-/// by its `fov.range` in all directions — padded out to at least a minimum
-/// extent. Returns `None` for an empty set (callers keep the default view).
+/// tightly encloses what is actually drawn for every camera: the marker disc
+/// (`position` ± [`MARKER_RADIUS_CM`]) and the FOV wedge (apex at `position`
+/// plus its arc). Returns `None` for an empty set (callers keep the default
+/// view).
 ///
-/// This is a deliberately simple, safe over-approximation (a square per camera
-/// rather than the exact cone) so it is cheap and reusable — e.g. a minimap can
-/// call it to size its world rect.
+/// The wedge is directional, so a symmetric ±`range` square would pad the sides
+/// the cone doesn't face and mis-center the fit. Instead the arc is *sampled*
+/// (matching the cone math in [`map_camera`](super::map_camera)): screen angle
+/// (clockwise from +x, y-down) is `bearing - 90`, the wedge spans
+/// `direction_deg ± angle_deg / 2`, and each sample is `position + range *
+/// (cos θ, sin θ)`. Sampling avoids fiddly cardinal-crossing extrema math and
+/// stays cheap and reusable — e.g. a minimap can call it to size its world rect.
 fn content_bounds(cameras: &[MapCamera]) -> Option<(f64, f64, f64, f64)> {
     if cameras.is_empty() {
         return None;
@@ -144,14 +153,37 @@ fn content_bounds(cameras: &[MapCamera]) -> Option<(f64, f64, f64, f64)> {
     let mut max_x = f64::NEG_INFINITY;
     let mut max_y = f64::NEG_INFINITY;
 
+    let mut fold = |x: f64, y: f64| {
+        min_x = min_x.min(x);
+        min_y = min_y.min(y);
+        max_x = max_x.max(x);
+        max_y = max_y.max(y);
+    };
+
     for camera in cameras {
-        let reach = (camera.fov.range as f64).max(MIN_CONTENT_HALF_EXTENT);
-        let x = camera.position.x as f64;
-        let y = camera.position.y as f64;
-        min_x = min_x.min(x - reach);
-        min_y = min_y.min(y - reach);
-        max_x = max_x.max(x + reach);
-        max_y = max_y.max(y + reach);
+        let cx = camera.position.x as f64;
+        let cy = camera.position.y as f64;
+
+        // Marker disc, with a small minimum so a degenerate cone still has area.
+        let pad = MARKER_RADIUS_CM.max(MIN_CONTENT_HALF_EXTENT);
+        fold(cx - pad, cy - pad);
+        fold(cx + pad, cy + pad);
+
+        // FOV wedge: apex plus sampled arc (range away along each sampled angle).
+        let range = camera.fov.range as f64;
+        let half = camera.fov.angle_deg as f64 / 2.0;
+        let start = camera.fov.direction_deg as f64 - half - 90.0;
+        let end = camera.fov.direction_deg as f64 + half - 90.0;
+
+        let mut deg = start;
+        loop {
+            let theta = deg.min(end).to_radians();
+            fold(cx + range * theta.cos(), cy + range * theta.sin());
+            if deg >= end {
+                break;
+            }
+            deg += ARC_SAMPLE_STEP_DEG;
+        }
     }
 
     Some((min_x, min_y, max_x, max_y))

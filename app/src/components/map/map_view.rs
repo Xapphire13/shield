@@ -873,6 +873,11 @@ pub fn MapView() -> Element {
                 Minimap {
                     world_bounds,
                     visible,
+                    // Live positions (preview applied) so dots track during drags.
+                    cameras: display_cameras
+                        .iter()
+                        .map(|c| (c.position.x as f64, c.position.y as f64))
+                        .collect::<Vec<_>>(),
                     on_recenter: move |(wx, wy): (f64, f64)| {
                         let (cw, ch) = *canvas_size.read();
                         let mut vp = viewport.write();

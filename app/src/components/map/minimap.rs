@@ -11,6 +11,9 @@ const CHEVRON_ARM: f64 = 5.0;
 /// How far the chevron tip is inset from the box edge it hugs, in minimap pixels.
 const CHEVRON_INSET: f64 = 6.0;
 
+/// Radius of a placed-camera dot on the minimap, in minimap pixels.
+const CAMERA_DOT_RADIUS: f64 = 2.0;
+
 /// DOM id of the minimap SVG element, used to measure its own bounding rect so
 /// pointer positions can be made minimap-relative (see [`Minimap`]).
 const MINIMAP_ID: &str = "map-minimap";
@@ -43,6 +46,9 @@ pub fn Minimap(
     world_bounds: (f64, f64, f64, f64),
     /// Currently-visible world rectangle: `(min_x, min_y, max_x, max_y)`.
     visible: (f64, f64, f64, f64),
+    /// Placed camera positions in world centimeters, drawn as dots. Always
+    /// inside `world_bounds`, so they need no clipping.
+    cameras: Vec<(f64, f64)>,
     /// Called with a world point `(x, y)` to center the main view on.
     on_recenter: Callback<(f64, f64)>,
 ) -> Element {
@@ -75,6 +81,10 @@ pub fn Minimap(
     let cy1 = vy1.min(box_h);
     let clip_w = (cx1 - cx0).max(0.0);
     let clip_h = (cy1 - cy0).max(0.0);
+
+    // Camera dots: each position through the same content->minimap scale. They
+    // always sit inside the content bounds, so no clipping is needed.
+    let dots: Vec<(f64, f64)> = cameras.iter().map(|&(x, y)| to_px(x, y)).collect();
 
     // Off-map chevron: snapped to one of 8 fixed directions from the viewfinder
     // center's position relative to the box, pinned to the matching edge/corner.
@@ -144,6 +154,16 @@ pub fn Minimap(
                 y: "0",
                 width: "{box_w}",
                 height: "{box_h}",
+            }
+
+            // Placed cameras as small dots.
+            for (dx, dy) in dots.iter().copied() {
+                circle {
+                    class: "map-minimap__camera",
+                    cx: "{dx}",
+                    cy: "{dy}",
+                    r: "{CAMERA_DOT_RADIUS}",
+                }
             }
 
             // Viewfinder: a clipped rect while overlapping, else an off-map

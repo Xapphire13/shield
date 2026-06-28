@@ -766,6 +766,11 @@ ul {
     stroke-width: 1;
 }
 
+/* Placed cameras as small unobtrusive dots on the minimap. */
+.map-minimap__camera {
+    fill: var(--color-text-muted);
+}
+
 /* Off-map indicator: an open chevron glyph (two strokes meeting at a tip) that
    stands in for the viewfinder when it is fully off the minimap, pinned to the
    border and pointing toward it. Stroked (not filled) in the viewfinder accent. */

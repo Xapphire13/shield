@@ -4,8 +4,12 @@ use dioxus::prelude::*;
 /// from the content bounds' aspect ratio so the minimap never distorts the map.
 const MINIMAP_MAX_EDGE: f64 = 160.0;
 
-/// Half-length of the off-map chevron, in minimap pixels (apex to base).
-const CHEVRON_HALF: f64 = 7.0;
+/// Arm length of the off-map chevron glyph, in minimap pixels (the `s` in the
+/// `‹`/`›`/`^`/`v` shape — each arm runs `s` px back from the tip).
+const CHEVRON_ARM: f64 = 5.0;
+
+/// How far the chevron tip is inset from the box edge it hugs, in minimap pixels.
+const CHEVRON_INSET: f64 = 6.0;
 
 /// DOM id of the minimap SVG element, used to measure its own bounding rect so
 /// pointer positions can be made minimap-relative (see [`Minimap`]).
@@ -72,14 +76,12 @@ pub fn Minimap(
     let clip_w = (cx1 - cx0).max(0.0);
     let clip_h = (cy1 - cy0).max(0.0);
 
-    // Off-map chevron: a triangle pinned where the ray from the box center to the
-    // viewfinder center crosses the box border, pointing outward along that ray.
+    // Off-map chevron: snapped to one of 8 fixed directions from the viewfinder
+    // center's position relative to the box, pinned to the matching edge/corner.
     let chevron = (!overlaps).then(|| {
-        let bcx = box_w / 2.0;
-        let bcy = box_h / 2.0;
         let vcx = (vx0 + vx1) / 2.0;
         let vcy = (vy0 + vy1) / 2.0;
-        chevron_points(bcx, bcy, vcx, vcy, box_w, box_h)
+        chevron_path(vcx, vcy, box_w, box_h)
     });
 
     // Translate a minimap-relative pixel position back to a world point and ask
@@ -146,8 +148,8 @@ pub fn Minimap(
 
             // Viewfinder: a clipped rect while overlapping, else an off-map
             // chevron pinned to the border pointing toward it.
-            if let Some(points) = chevron {
-                polygon { class: "map-minimap__chevron", points: "{points}" }
+            if let Some(path) = chevron {
+                path { class: "map-minimap__chevron", d: "{path}" }
             } else if overlaps {
                 rect {
                     class: "map-minimap__viewport",
@@ -161,45 +163,68 @@ pub fn Minimap(
     }
 }
 
-/// Build an outward-pointing chevron (isoceles triangle) for an off-map
-/// viewfinder, as an SVG `points` string in minimap pixels.
+/// Build an open chevron glyph (`›`/`‹`/`^`/`v` or a diagonal corner variant)
+/// for an off-map viewfinder, as an SVG path `d` string in minimap pixels.
 ///
-/// The apex sits where the ray from the box center `(bcx, bcy)` toward the
-/// viewfinder center `(vcx, vcy)` crosses the box border; the triangle points
-/// along that ray. The two base corners are offset from a point pulled slightly
-/// back inside the border, perpendicular to the ray, so the chevron reads as an
-/// arrow hugging the edge.
-fn chevron_points(bcx: f64, bcy: f64, vcx: f64, vcy: f64, box_w: f64, box_h: f64) -> String {
-    let dx = vcx - bcx;
-    let dy = vcy - bcy;
-    let len = (dx * dx + dy * dy).sqrt().max(1.0);
-    let (ux, uy) = (dx / len, dy / len);
-
-    // Distance from center to the border along the ray (axis-aligned box): the
-    // smaller of the horizontal / vertical scalings reaches the nearer edge.
-    let tx = if ux != 0.0 {
-        (box_w / 2.0) / ux.abs()
+/// Direction snaps to one of 8 fixed orientations from the viewfinder center's
+/// position relative to the box `[0,w] x [0,h]`: each axis contributes a sign
+/// (`vcx < 0` Left / `> w` Right; `vcy < 0` Up / `> h` Down), giving a cardinal
+/// (one axis off) or diagonal (both off) direction — never a continuous angle.
+/// The chevron is pinned to the matching edge or corner (inset), sliding along a
+/// cardinal edge to track the viewfinder. It is rendered open (two arms meeting
+/// at the tip), so the path is `tip - arm` -> `tip` -> `tip - arm` rotated by
+/// the perpendicular: arms run back from the tip at ±45° around the point
+/// direction `(ux, uy)` (a unit or diagonal-unit vector).
+fn chevron_path(vcx: f64, vcy: f64, box_w: f64, box_h: f64) -> String {
+    // Per-axis sign of the off-box direction (-1 / 0 / +1).
+    let sx = if vcx < 0.0 {
+        -1.0
+    } else if vcx > box_w {
+        1.0
     } else {
-        f64::INFINITY
+        0.0
     };
-    let ty = if uy != 0.0 {
-        (box_h / 2.0) / uy.abs()
+    let sy = if vcy < 0.0 {
+        -1.0
+    } else if vcy > box_h {
+        1.0
     } else {
-        f64::INFINITY
+        0.0
     };
-    let t = tx.min(ty);
 
-    // Apex on the border; base sits CHEVRON_HALF back inside, fanned out by the
-    // same amount perpendicular to the ray (perp of (ux,uy) is (-uy,ux)).
-    let apex_x = bcx + ux * t;
-    let apex_y = bcy + uy * t;
-    let base_cx = apex_x - ux * CHEVRON_HALF;
-    let base_cy = apex_y - uy * CHEVRON_HALF;
-    let (px, py) = (-uy, ux);
-    let b1x = base_cx + px * CHEVRON_HALF;
-    let b1y = base_cy + py * CHEVRON_HALF;
-    let b2x = base_cx - px * CHEVRON_HALF;
-    let b2y = base_cy - py * CHEVRON_HALF;
+    // Tip position: pin to the off edge(s); slide along the on-axis to track the
+    // viewfinder, clamped to stay inside the box with the inset.
+    let lo = CHEVRON_INSET;
+    let tip_x = match sx {
+        s if s < 0.0 => CHEVRON_INSET,
+        s if s > 0.0 => box_w - CHEVRON_INSET,
+        _ => vcx.clamp(lo, box_w - lo),
+    };
+    let tip_y = match sy {
+        s if s < 0.0 => CHEVRON_INSET,
+        s if s > 0.0 => box_h - CHEVRON_INSET,
+        _ => vcy.clamp(lo, box_h - lo),
+    };
 
-    format!("{apex_x},{apex_y} {b1x},{b1y} {b2x},{b2y}")
+    // Point direction (unit for cardinals, diagonal for corners). At least one
+    // axis is non-zero because the chevron only renders when fully off-box.
+    let (ux, uy) = if sx != 0.0 && sy != 0.0 {
+        let inv = 1.0 / std::f64::consts::SQRT_2;
+        (sx * inv, sy * inv)
+    } else {
+        (sx, sy)
+    };
+
+    // The two arms run back from the tip at ±45° to the point direction:
+    // rotate `-(ux, uy) * arm` by ±45° (rotation by ±45° of a vector (x, y) is
+    // (x∓y, ±x+y) / √2).
+    let bx = -ux * CHEVRON_ARM;
+    let by = -uy * CHEVRON_ARM;
+    let r = 1.0 / std::f64::consts::SQRT_2;
+    let a1x = tip_x + (bx - by) * r;
+    let a1y = tip_y + (bx + by) * r;
+    let a2x = tip_x + (bx + by) * r;
+    let a2y = tip_y + (-bx + by) * r;
+
+    format!("M {a1x} {a1y} L {tip_x} {tip_y} L {a2x} {a2y}")
 }

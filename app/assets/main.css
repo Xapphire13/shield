@@ -766,11 +766,13 @@ ul {
     stroke-width: 1;
 }
 
-/* Off-map indicator: stands in for the viewfinder when it is fully off the
-   minimap, pinned to the border and pointing toward it. Same accent treatment
-   as the viewfinder rect. */
+/* Off-map indicator: an open chevron glyph (two strokes meeting at a tip) that
+   stands in for the viewfinder when it is fully off the minimap, pinned to the
+   border and pointing toward it. Stroked (not filled) in the viewfinder accent. */
 .map-minimap__chevron {
-    fill: rgba(176, 73, 255, 0.6);
+    fill: none;
     stroke: var(--color-accent-border);
-    stroke-width: 1;
+    stroke-width: 2;
+    stroke-linejoin: round;
+    stroke-linecap: round;
 }

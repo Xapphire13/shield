@@ -281,38 +281,44 @@ pub fn MapView() -> Element {
     let mut placing = use_signal(|| None::<String>);
     let mut picker_open = use_signal(|| false);
 
-    // Cached canvas geometry from its bounding rect: the viewport-relative
-    // top-left (origin) drives canvas-relative pointer math (see `canvas_xy`),
-    // and the size drives the initial fit-to-content. The rect is stable during
-    // a drag, so the cached values stay correct; both are captured on mount and
-    // refreshed on resize.
+    // Cached canvas geometry from the frame's bounding rect: the viewport-relative
+    // top-left (origin) drives canvas-relative pointer math (see `canvas_xy`), and
+    // the size drives the initial fit-to-content. The rect is stable during a
+    // drag, so the cached values stay correct.
     let mut canvas_origin = use_signal(|| (0.0_f64, 0.0_f64));
     let mut canvas_size = use_signal(|| (0.0_f64, 0.0_f64));
-    let mut canvas_element = use_signal(|| None::<std::rc::Rc<MountedData>>);
     // Whether the initial fit-to-content has been applied. Guards against
     // re-fitting on later edits / pans / zooms.
     let mut fitted = use_signal(|| false);
 
-    let refresh_origin = use_callback(move |_: ()| {
-        if let Some(element) = canvas_element.read().clone() {
-            spawn(async move {
-                if let Ok(rect) = element.get_client_rect().await {
-                    canvas_origin.set((rect.origin.x, rect.origin.y));
-                    canvas_size.set((rect.size.width, rect.size.height));
-                }
-            });
-        }
-    });
-
-    // Keep the cached canvas origin in sync with window resizes (the rect's
-    // top-left can shift when the layout reflows).
+    // Measure the frame with a ResizeObserver rather than a one-shot mount read.
+    // A mount-time `get_client_rect` can run before the browser's first layout
+    // pass on a fresh / deep-link load, measuring a not-yet-laid-out box; the
+    // observer instead fires once *after* layout (fixing that case) and again on
+    // every size change, so it also subsumes the old window-resize listener and
+    // is the single source of truth for both origin and size. (The frame is
+    // retried via requestAnimationFrame in case it isn't in the DOM yet.)
     use_effect(move || {
-        let mut resize = document::eval(
-            "window.addEventListener('resize', () => dioxus.send(0)); dioxus.send(0);",
+        let mut rect = document::eval(
+            r#"
+            function attach() {
+                const el = document.getElementById('map-canvas-frame');
+                if (!el) { requestAnimationFrame(attach); return; }
+                const ro = new ResizeObserver(() => {
+                    const r = el.getBoundingClientRect();
+                    dioxus.send([r.left, r.top, r.width, r.height]);
+                });
+                ro.observe(el);
+            }
+            attach();
+            "#,
         );
         spawn(async move {
-            while resize.recv::<i32>().await.is_ok() {
-                refresh_origin(());
+            while let Ok(values) = rect.recv::<Vec<f64>>().await {
+                if values.len() == 4 {
+                    canvas_origin.set((values[0], values[1]));
+                    canvas_size.set((values[2], values[3]));
+                }
             }
         });
     });
@@ -476,16 +482,14 @@ pub fn MapView() -> Element {
 
             // Frame is the svg's positioning context and the measured element:
             // the svg fills it via absolute inset:0, so the frame's rect is the
-            // canvas rect. We measure the div (reliable) rather than the svg,
-            // whose percentage size collapses to its intrinsic 300x150 on WebKit.
-            // Because the svg exactly overlaps the frame, the frame origin is the
-            // svg origin, so `canvas_xy` pointer math stays correct.
+            // canvas rect. We measure the div (reliable, via the ResizeObserver
+            // keyed on this id) rather than the svg, whose percentage size
+            // collapses to its intrinsic 300x150 on WebKit. Because the svg
+            // exactly overlaps the frame, the frame origin is the svg origin, so
+            // `canvas_xy` pointer math stays correct.
             div {
+                id: "map-canvas-frame",
                 class: "map-canvas-frame",
-                onmounted: move |evt| {
-                    canvas_element.set(Some(evt.data()));
-                    refresh_origin(());
-                },
                 svg {
                     class: "map-canvas",
                     "data-placing": is_placing,

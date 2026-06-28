@@ -352,10 +352,14 @@ pub fn MapView() -> Element {
 
     let mut editing = use_signal(|| false);
     let mut selection = use_signal(|| None::<String>);
-    // The placed camera whose read-only info card is open in view mode, by
-    // placed-reference id. Only used outside edit mode (edit mode owns taps via
-    // the selection flow).
+    // The placed camera whose read-only info popover is pinned in view mode, by
+    // placed-reference id. Set by a tap/click and only used outside edit mode
+    // (edit mode owns taps via the selection flow).
     let mut info_camera_id = use_signal(|| None::<String>);
+    // The placed camera currently hovered in view mode (hover-capable devices
+    // only; gated in CSS via `@media (hover: hover)`). Transient: cleared on
+    // mouse-leave. A pinned (tapped) camera takes precedence over this.
+    let mut hovered_camera_id = use_signal(|| None::<String>);
     // The camera id chosen in the picker and awaiting a placement tap.
     let mut placing = use_signal(|| None::<String>);
     let mut picker_open = use_signal(|| false);
@@ -491,14 +495,33 @@ pub fn MapView() -> Element {
         .as_ref()
         .and_then(|id| display_cameras.iter().find(|c| &c.camera_id == id).cloned());
 
-    // View-mode read-only info card target. `info_camera_id` is a placed-reference
-    // id; `info_open` is whether a card is open at all, and `info_camera` resolves
-    // that id against the camera list to `Some(Camera)` for a live camera or
-    // `None` for an orphan (deleted underlying camera).
-    let info_open = info_camera_id.read().clone();
-    let info_camera = info_open
-        .as_ref()
-        .and_then(|id| camera_list.iter().find(|c| &c.id == id).cloned());
+    // View-mode read-only info popover target. A tap pins a camera
+    // (`info_camera_id`); hovering one sets `hovered_camera_id` (hover devices
+    // only, gated in CSS). The pinned camera takes precedence, so the active id
+    // is the pinned one when present, else the hovered one. `pinned` distinguishes
+    // the two cases: a pinned popover gets a close button and is always shown,
+    // while a hover-only popover is gated to hover devices and needs no close.
+    let pinned_id = info_camera_id.read().clone();
+    let pinned = pinned_id.is_some();
+    let active_info_id = pinned_id
+        .clone()
+        .or_else(|| hovered_camera_id.read().clone());
+
+    // Resolve the active id against the placed cameras (for its world position /
+    // on-screen anchor) and the camera list (for its display data). A placed
+    // reference with no matching camera is an orphan → `None` camera, shown as
+    // "Unknown camera". The popover anchors to the marker's current on-screen
+    // point, derived from the live viewport + canvas origin so it follows the
+    // marker as the user pans/zooms.
+    let info_anchor = active_info_id.as_ref().and_then(|id| {
+        let placed_camera = display_cameras.iter().find(|c| &c.camera_id == id)?;
+        let vp = *viewport.read();
+        let (ox, oy) = *canvas_origin.read();
+        let screen_x = ox + (placed_camera.position.x as f64 * vp.zoom + vp.pan_x);
+        let screen_y = oy + (placed_camera.position.y as f64 * vp.zoom + vp.pan_y);
+        let camera = camera_list.iter().find(|c| &c.id == id).cloned();
+        Some((screen_x, screen_y, camera))
+    });
 
     // --- Minimap inputs ---
     // The minimap only renders when there is content to navigate AND the canvas
@@ -833,14 +856,35 @@ pub fn MapView() -> Element {
                                         }
                                     },
                                     on_tap: {
-                                        // View mode only: open the read-only info
-                                        // card for this camera. In edit mode the
+                                        // View mode only: pin the read-only info
+                                        // popover for this camera. In edit mode the
                                         // pointer-down selection flow owns taps, so
                                         // ignore this here.
                                         let id = id.clone();
                                         move |_| {
                                             if !is_editing {
                                                 info_camera_id.set(Some(id.clone()));
+                                            }
+                                        }
+                                    },
+                                    on_hover_enter: {
+                                        // Hover-capable devices only (gated in CSS):
+                                        // show the popover for the hovered camera.
+                                        // The pinned camera takes precedence when set.
+                                        let id = id.clone();
+                                        move |_| {
+                                            if !is_editing {
+                                                hovered_camera_id.set(Some(id.clone()));
+                                            }
+                                        }
+                                    },
+                                    on_hover_leave: {
+                                        let id = id.clone();
+                                        move |_| {
+                                            if hovered_camera_id.read().as_deref()
+                                                == Some(id.as_str())
+                                            {
+                                                hovered_camera_id.set(None);
                                             }
                                         }
                                     },
@@ -900,14 +944,21 @@ pub fn MapView() -> Element {
                 }
             }
 
-            // --- View-mode read-only info card ---
-            // Shown when a camera is tapped outside edit mode. It floats above the
-            // global List/Map bottom nav (so the nav stays reachable) and is
-            // cleared on close, empty-canvas tap, or on entering edit mode.
-            if !is_editing && info_open.is_some() {
-                CameraInfo {
-                    camera: info_camera.clone(),
-                    on_close: move |_| info_camera_id.set(None),
+            // --- View-mode read-only info popover ---
+            // Anchored next to the marker (tapped, or hovered on hover devices)
+            // outside edit mode. It follows the marker on pan/zoom because the
+            // anchor is recomputed from the live viewport each render. A pinned
+            // (tapped) popover shows a close button and is always rendered; a
+            // hover-only one is gated to hover devices in CSS and needs no close.
+            if !is_editing {
+                if let Some((screen_x, screen_y, camera)) = info_anchor {
+                    CameraInfo {
+                        camera,
+                        anchor_x: screen_x,
+                        anchor_y: screen_y,
+                        pinned,
+                        on_close: move |_| info_camera_id.set(None),
+                    }
                 }
             }
 

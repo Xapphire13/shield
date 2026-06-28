@@ -48,11 +48,18 @@ pub fn MapCameraMarker(
     #[props(default)]
     on_range_pointer_down: Option<Callback<Event<PointerData>>>,
     /// Fired on a click (press-release without a drag) on the marker body. The
-    /// host uses this in view mode to open a read-only info card; because a click
-    /// only fires when the pointer is released without panning, it does not
+    /// host uses this in view mode to pin a read-only info popover; because a
+    /// click only fires when the pointer is released without panning, it does not
     /// trigger on a pan gesture.
     #[props(default)]
     on_tap: Option<Callback<()>>,
+    /// Fired when a hovering pointer enters the marker body. The host uses this
+    /// (on hover-capable devices) to show the read-only info popover.
+    #[props(default)]
+    on_hover_enter: Option<Callback<()>>,
+    /// Fired when a hovering pointer leaves the marker body.
+    #[props(default)]
+    on_hover_leave: Option<Callback<()>>,
 ) -> Element {
     let cx = camera.position.x as f64;
     let cy = camera.position.y as f64;
@@ -132,11 +139,23 @@ pub fn MapCameraMarker(
                         }
                     }
                 },
-                // A click (press-release without a drag) opens the view-mode info
-                // card. The host ignores this in edit mode, where the pointer-down
-                // selection flow above owns taps.
+                // A click (press-release without a drag) pins the view-mode info
+                // popover. The host ignores this in edit mode, where the
+                // pointer-down selection flow above owns taps.
                 onclick: move |_| {
                     if let Some(cb) = on_tap {
+                        cb.call(());
+                    }
+                },
+                // Hover shows the popover on hover-capable devices; the host gates
+                // the effect to such devices (CSS `@media (hover: hover)`).
+                onmouseenter: move |_| {
+                    if let Some(cb) = on_hover_enter {
+                        cb.call(());
+                    }
+                },
+                onmouseleave: move |_| {
+                    if let Some(cb) = on_hover_leave {
                         cb.call(());
                     }
                 },

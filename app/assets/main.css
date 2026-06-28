@@ -738,24 +738,60 @@ ul {
     accent-color: var(--color-accent);
 }
 
-/* Read-only info card for a camera tapped on the map in view mode. Mirrors the
-   edit-mode inspector's surface styling, but floats clear of the global bottom
-   navigation (view mode keeps the nav reachable) instead of sitting flush at the
-   bottom edge. */
+/* Read-only info popover for a camera shown on the map in view mode, anchored
+   next to its marker. Mirrors the edit-mode inspector's surface styling. The
+   host sets `position: fixed` left/top (or bottom) inline to anchor it; this rule
+   supplies the surface. `--caret-left` (inline) positions the caret over the
+   marker; `data-placement` selects which edge the caret sits on. */
 .camera-info {
-    position: fixed;
-    left: 16px;
-    right: 16px;
-    bottom: calc(var(--bottom-toolbar-height) + 16px);
     z-index: calc(var(--z-bottom-toolbar) + 1);
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 10px;
     background-color: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: 12px;
     box-shadow: 0 8px 24px var(--color-shadow);
-    padding: 16px;
+    padding: 12px;
+    pointer-events: auto;
+}
+
+/* The caret is a rotated square poking out of the popover toward the marker. Its
+   horizontal position follows the marker via `--caret-left`; placement above the
+   marker puts it on the bottom edge, below the marker on the top edge. */
+.camera-info__caret {
+    position: absolute;
+    left: var(--caret-left, 50%);
+    width: 12px;
+    height: 12px;
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-border);
+    transform: translateX(-50%) rotate(45deg);
+}
+
+.camera-info[data-placement="above"] .camera-info__caret {
+    bottom: -7px;
+    border-top: none;
+    border-left: none;
+}
+
+.camera-info[data-placement="below"] .camera-info__caret {
+    top: -7px;
+    border-bottom: none;
+    border-right: none;
+}
+
+/* Hover-only popover (not pinned by a tap): only show it on devices with a real
+   hovering pointer, matching the project's `selectable-row` hover convention. On
+   touch devices a lingering hover state would otherwise leave it stuck. */
+.camera-info[data-pinned="false"] {
+    display: none;
+}
+
+@media (hover: hover) {
+    .camera-info[data-pinned="false"] {
+        display: flex;
+    }
 }
 
 .camera-info__header {
@@ -767,7 +803,7 @@ ul {
 .camera-info__title {
     flex: 1;
     font-weight: bold;
-    font-size: 1.1rem;
+    font-size: 1rem;
 }
 
 .camera-info__title[data-orphaned="true"] {

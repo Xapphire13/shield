@@ -320,25 +320,25 @@ pub fn MapView() -> Element {
     let placed = map.as_ref().map(|m| m.cameras.clone()).unwrap_or_default();
 
     // Fit and center the placed cameras once, as soon as the map has loaded with
-    // content and the canvas size is known. Guarded by `fitted` so it never
-    // re-runs after edits/adds or once the user has panned/zoomed; an empty map
-    // keeps the default viewport.
-    {
-        let placed = placed.clone();
-        use_effect(move || {
-            if *fitted.read() {
-                return;
-            }
-            let (w, h) = *canvas_size.read();
-            if w <= 0.0 || h <= 0.0 {
-                return;
-            }
-            if let Some(bounds) = content_bounds(&placed) {
-                viewport.set(Viewport::fit_to_content(bounds, w, h));
-                fitted.set(true);
-            }
-        });
-    }
+    // content and the canvas size is known. `placed` is a plain snapshot (not a
+    // signal), so `use_reactive` is needed to re-run this when it changes (the
+    // map loading / cameras changing); reading `canvas_size` inside also re-runs
+    // it once the size resolves. Whichever of those happens last performs the
+    // actual fit. The `fitted` guard ensures it fits exactly once and never
+    // fights later user pan/zoom; an empty map keeps the default viewport.
+    use_effect(use_reactive((&placed,), move |(placed,)| {
+        if *fitted.read() {
+            return;
+        }
+        let (w, h) = *canvas_size.read();
+        if w <= 0.0 || h <= 0.0 {
+            return;
+        }
+        if let Some(bounds) = content_bounds(&placed) {
+            viewport.set(Viewport::fit_to_content(bounds, w, h));
+            fitted.set(true);
+        }
+    }));
 
     // Resolve a placed camera's display name, or `None` when its reference is an
     // orphan (underlying camera deleted).

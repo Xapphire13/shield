@@ -11,6 +11,7 @@ use crate::components::map::camera_inspector::CameraInspector;
 use crate::components::map::edit_toolbar::{CameraPicker, EditToolbar};
 use crate::components::map::map_camera::{MARKER_RADIUS_CM, MapCameraMarker};
 use crate::components::map::minimap::Minimap;
+use crate::components::map::unplaced_badge::UnplacedBadge;
 use crate::hooks::{UseCamerasResult, UseMapResult, use_cameras, use_map};
 
 /// The single map edited in v1. The service lazily returns an empty map for any
@@ -977,6 +978,15 @@ pub fn MapView() -> Element {
                         vp.pan_y = ch / 2.0 - wy * zoom;
                     },
                 }
+            }
+
+            // --- Unplaced-camera badge (lower-left) ---
+            // A floating warning that some cameras exist but are not yet on the
+            // map, shown in both view and edit modes. Hidden when everything is
+            // placed (count == 0). Its z-index sits below the bottom sheets, so an
+            // open inspector / picker simply renders over it.
+            if !unplaced.is_empty() {
+                UnplacedBadge { count: unplaced.len() }
             }
 
             // --- Camera picker sheet ---

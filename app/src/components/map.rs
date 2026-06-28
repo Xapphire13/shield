@@ -4,5 +4,6 @@ pub mod edit_toolbar;
 pub mod map_camera;
 pub mod map_view;
 pub mod minimap;
+pub mod unplaced_badge;
 
 pub use map_view::MapView;

@@ -441,27 +441,27 @@ ul {
 }
 
 /* Interactive markers can be repositioned in edit mode. */
-.map-camera--editing .map-camera__marker {
+.map-camera[data-editing="true"] .map-camera__marker {
     cursor: move;
 }
 
 /* Selected camera: emphasize its marker and cone. */
-.map-camera--selected .map-camera__marker {
+.map-camera[data-selected="true"] .map-camera__marker {
     stroke: var(--color-text);
     stroke-width: 2.5px;
 }
 
-.map-camera--selected .map-camera__fov {
+.map-camera[data-selected="true"] .map-camera__fov {
     fill-opacity: 0.28;
     stroke-opacity: 0.9;
 }
 
 /* Orphaned camera (underlying camera deleted): muted, distinct styling. */
-.map-camera--orphaned .map-camera__marker {
+.map-camera[data-orphaned="true"] .map-camera__marker {
     fill: var(--color-text-muted);
 }
 
-.map-camera--orphaned .map-camera__fov {
+.map-camera[data-orphaned="true"] .map-camera__fov {
     fill: var(--color-text-muted);
     stroke: var(--color-text-muted);
     stroke-dasharray: 6 4;

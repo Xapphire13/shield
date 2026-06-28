@@ -2,6 +2,8 @@ use dioxus::prelude::*;
 use dioxus_free_icons::Icon;
 use dioxus_free_icons::icons::fi_icons::{FiCornerUpLeft, FiCornerUpRight};
 use shield_models::{FieldOfView, MapCamera, Point};
+use wasm_bindgen::JsCast;
+use wasm_bindgen::closure::Closure;
 
 use crate::components::map::camera_inspector::CameraInspector;
 use crate::components::map::edit_toolbar::{CameraPicker, EditToolbar};
@@ -11,6 +13,40 @@ use crate::hooks::{UseCamerasResult, UseMapResult, use_cameras, use_map};
 /// The single map edited in v1. The service lazily returns an empty map for any
 /// id, so a fixed default is sufficient until multi-map UI exists.
 const DEFAULT_MAP_ID: &str = "default";
+
+/// DOM id of the canvas frame element, used to locate it for measurement.
+const CANVAS_FRAME_ID: &str = "map-canvas-frame";
+
+/// Look up the canvas frame element in the DOM by its id.
+fn canvas_frame_element() -> Option<web_sys::Element> {
+    web_sys::window()?
+        .document()?
+        .get_element_by_id(CANVAS_FRAME_ID)
+}
+
+/// Read the canvas frame's bounding rect as `(left, top, width, height)` in
+/// viewport pixels, or `None` if it isn't in the DOM yet.
+fn canvas_frame_rect() -> Option<(f64, f64, f64, f64)> {
+    let rect = canvas_frame_element()?.get_bounding_client_rect();
+    Some((rect.left(), rect.top(), rect.width(), rect.height()))
+}
+
+/// Run `f` after the browser has applied layout for the current frame, using a
+/// double `requestAnimationFrame` (one frame to apply layout, one to be safe).
+/// Each callback is one-shot, so `Closure::once_into_js` is used to hand it to
+/// the browser without manual lifetime bookkeeping.
+fn after_next_layout(f: impl FnOnce() + 'static) {
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    let inner = Closure::once_into_js(f);
+    let outer = Closure::once_into_js(move || {
+        if let Some(window) = web_sys::window() {
+            let _ = window.request_animation_frame(inner.unchecked_ref());
+        }
+    });
+    let _ = window.request_animation_frame(outer.unchecked_ref());
+}
 
 /// Default field-of-view applied to a freshly placed camera.
 const DEFAULT_FOV: FieldOfView = FieldOfView {
@@ -324,35 +360,41 @@ pub fn MapView() -> Element {
     let mut fitted = use_signal(|| false);
 
     // Measure the frame with a ResizeObserver rather than a one-shot mount read.
-    // A mount-time `get_client_rect` can run before the browser's first layout
-    // pass on a fresh / deep-link load, measuring a not-yet-laid-out box; the
-    // observer instead fires once *after* layout (fixing that case) and again on
-    // every size change, so it also subsumes the old window-resize listener and
-    // is the single source of truth for both origin and size. (The frame is
-    // retried via requestAnimationFrame in case it isn't in the DOM yet.)
-    use_effect(move || {
-        let mut rect = document::eval(
-            r#"
-            function attach() {
-                const el = document.getElementById('map-canvas-frame');
-                if (!el) { requestAnimationFrame(attach); return; }
-                const ro = new ResizeObserver(() => {
-                    const r = el.getBoundingClientRect();
-                    dioxus.send([r.left, r.top, r.width, r.height]);
-                });
-                ro.observe(el);
-            }
-            attach();
-            "#,
-        );
-        spawn(async move {
-            while let Ok(values) = rect.recv::<Vec<f64>>().await {
-                if values.len() == 4 {
-                    canvas_origin.set((values[0], values[1]));
-                    canvas_size.set((values[2], values[3]));
-                }
+    // A mount-time read can run before the browser's first layout pass on a fresh
+    // / deep-link load, measuring a not-yet-laid-out box; the observer instead
+    // fires once *after* layout (fixing that case) and again on every size change,
+    // so it also subsumes a window-resize listener and is the single source of
+    // truth for both origin and size. The observer + its callback closure are
+    // held in component state so they stay alive for the component's lifetime.
+    let _observer = use_hook(|| {
+        let callback = Closure::<dyn FnMut()>::new(move || {
+            if let Some((left, top, width, height)) = canvas_frame_rect() {
+                canvas_origin.set((left, top));
+                canvas_size.set((width, height));
             }
         });
+
+        // The frame may not be in the DOM on the very first effect tick; retry on
+        // the next layout frame if so.
+        let observer = web_sys::ResizeObserver::new(callback.as_ref().unchecked_ref()).ok();
+        if let Some(observer) = &observer {
+            if let Some(element) = canvas_frame_element() {
+                observer.observe(&element);
+            } else {
+                let observer = observer.clone();
+                after_next_layout(move || {
+                    if let Some(element) = canvas_frame_element() {
+                        observer.observe(&element);
+                    }
+                });
+            }
+        }
+
+        // Keep both alive for the component's lifetime: dropping the closure
+        // would invalidate the observer's callback, and dropping the observer
+        // would stop notifications. `Rc` makes the stored state `Clone` (which
+        // `use_hook` requires) without cloning the non-`Clone` closure.
+        std::rc::Rc::new((observer, callback))
     });
 
     let placed = map.as_ref().map(|m| m.cameras.clone()).unwrap_or_default();
@@ -373,22 +415,14 @@ pub fn MapView() -> Element {
         if *fitted.peek() || placed.is_empty() {
             return;
         }
-        spawn(async move {
-            let mut raf = document::eval(
-                r#"
-                requestAnimationFrame(() => requestAnimationFrame(() => {
-                    const el = document.getElementById('map-canvas-frame');
-                    const r = el ? el.getBoundingClientRect() : { width: 0, height: 0 };
-                    dioxus.send([r.width, r.height]);
-                }));
-                "#,
-            );
-            if let Ok(values) = raf.recv::<Vec<f64>>().await {
-                if values.len() == 2 && values[0] > 0.0 && values[1] > 0.0 && !*fitted.peek() {
-                    if let Some(bounds) = content_bounds(&placed) {
-                        viewport.set(Viewport::fit_to_content(bounds, values[0], values[1]));
-                        fitted.set(true);
-                    }
+        after_next_layout(move || {
+            let Some((_, _, width, height)) = canvas_frame_rect() else {
+                return;
+            };
+            if width > 0.0 && height > 0.0 && !*fitted.peek() {
+                if let Some(bounds) = content_bounds(&placed) {
+                    viewport.set(Viewport::fit_to_content(bounds, width, height));
+                    fitted.set(true);
                 }
             }
         });

@@ -64,19 +64,12 @@ pub fn MapCameraMarker(
     let range_x = cx + range * center.cos();
     let range_y = cy + range * center.sin();
 
-    let mut group_class = String::from("map-camera");
-    if selected {
-        group_class.push_str(" map-camera--selected");
-    }
-    if orphaned {
-        group_class.push_str(" map-camera--orphaned");
-    }
-    if editing {
-        group_class.push_str(" map-camera--editing");
-    }
-
     rsx! {
-        g { class: "{group_class}",
+        g {
+            class: "map-camera",
+            "data-selected": selected,
+            "data-orphaned": orphaned,
+            "data-editing": editing,
             // Field-of-view wedge.
             path { class: "map-camera__fov", d: "{cone_path}" }
 

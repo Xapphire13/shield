@@ -511,6 +511,10 @@ pub fn MapView() -> Element {
         None
     };
 
+    // A tall bottom sheet (camera inspector or picker) is open and would overlap
+    // the minimap; the short edit tool strip does not, so it is excluded here.
+    let bottom_sheet_open = is_editing && (selected_camera.is_some() || *picker_open.read());
+
     rsx! {
         div { class: "primary-view map-view",
             // --- Top bar (title, undo/redo, edit toggle) ---
@@ -868,8 +872,11 @@ pub fn MapView() -> Element {
             // --- Minimap (bottom-right viewport navigator) ---
             // Floats above the bottom chrome; auto-hidden when fully zoomed out
             // (see `minimap_data`). Recentering keeps zoom and pans so the chosen
-            // world point maps to the canvas center.
-            if let Some((world_bounds, visible)) = minimap_data {
+            // world point maps to the canvas center. Also hidden while a tall
+            // bottom sheet is open (the camera inspector or the picker), which
+            // would otherwise overlap it — the short edit tool strip is fine
+            // (see `bottom_sheet_open`).
+            if let Some((world_bounds, visible)) = minimap_data.filter(|_| !bottom_sheet_open) {
                 Minimap {
                     world_bounds,
                     visible,

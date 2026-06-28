@@ -365,10 +365,32 @@ ul {
 .map-view {
     position: relative;
     height: 100vh;
+    display: flex;
+    flex-direction: column;
+    /* Override the shared .primary-view inset so the top bar can sit flush
+       against the page edges; the canvas insets itself instead (below). */
+    padding: 0;
+}
+
+/* Frame fills the area below the top bar and carries the visual inset as
+   margin: a gap below the top bar, comfortable side margins, and bottom spacing
+   that still clears the fixed bottom nav / edit strip (the clearance
+   .primary-view's padding-bottom previously provided). It is the positioning
+   context for the svg and the element we measure: a div's rect is reliable,
+   whereas a percentage-sized <svg> without a viewBox collapses to its intrinsic
+   300x150 on WebKit. */
+.map-canvas-frame {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    margin: 12px 16px calc(16px + var(--bottom-toolbar-height));
 }
 
 .map-canvas {
-    display: block;
+    /* Absolute inset:0 against the relative frame gives the svg a definite box
+       from its containing block, bypassing the SVG intrinsic-size quirk. */
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
     background-color: var(--color-surface-sunken);
@@ -380,8 +402,24 @@ ul {
     cursor: grab;
 }
 
-.map-canvas:active {
+/* Cursor reflects the active gesture (driven by the `data-gesture` attribute)
+   so it stays stable while dragging, even as the pointer crosses child
+   elements. */
+.map-canvas[data-gesture="pan"] {
     cursor: grabbing;
+}
+
+/* Repositioning a camera origin is a move, distinct from panning the canvas. */
+.map-canvas[data-gesture="move"] {
+    cursor: move;
+}
+
+.map-canvas[data-gesture="aim"] {
+    cursor: crosshair;
+}
+
+.map-canvas[data-gesture="range"] {
+    cursor: nesw-resize;
 }
 
 /* A placed camera: marker dot + translucent field-of-view wedge. */
@@ -400,4 +438,297 @@ ul {
     stroke: var(--color-text);
     stroke-width: 1.5px;
     vector-effect: non-scaling-stroke;
+}
+
+/* Interactive markers can be repositioned in edit mode. */
+.map-camera[data-editing="true"] .map-camera__marker {
+    cursor: move;
+}
+
+/* Selected camera: emphasize its marker and cone. */
+.map-camera[data-selected="true"] .map-camera__marker {
+    stroke: var(--color-text);
+    stroke-width: 2.5px;
+}
+
+.map-camera[data-selected="true"] .map-camera__fov {
+    fill-opacity: 0.28;
+    stroke-opacity: 0.9;
+}
+
+/* Orphaned camera (underlying camera deleted): muted, distinct styling. */
+.map-camera[data-orphaned="true"] .map-camera__marker {
+    fill: var(--color-text-muted);
+}
+
+.map-camera[data-orphaned="true"] .map-camera__fov {
+    fill: var(--color-text-muted);
+    stroke: var(--color-text-muted);
+    stroke-dasharray: 6 4;
+}
+
+/* On-canvas manipulation handles for the selected camera. */
+.map-camera__guide {
+    stroke: var(--color-text);
+    stroke-width: 1px;
+    stroke-dasharray: 4 4;
+    stroke-opacity: 0.6;
+    vector-effect: non-scaling-stroke;
+}
+
+.map-camera__handle {
+    fill: var(--color-surface);
+    stroke: var(--color-text);
+    stroke-width: 1.5px;
+    vector-effect: non-scaling-stroke;
+}
+
+/* Aim handle rotates the cone — a crosshair signals "point it here". */
+.map-camera__handle--aim {
+    fill: var(--color-accent);
+    cursor: crosshair;
+}
+
+/* Range handle resizes the cone length — a resize cursor signals "drag out". */
+.map-camera__handle--range {
+    fill: var(--color-surface-highlight);
+    cursor: nesw-resize;
+}
+
+/* While awaiting a placement tap, hint that the canvas is a drop target. */
+.map-canvas[data-placing="true"] {
+    cursor: crosshair;
+}
+
+/* Top bar overlaying the canvas: title centered, edit toggle top-right, and
+   undo/redo controls top-left while editing. */
+/* Solid bar in normal flow above the canvas (does not overlap map content). */
+.map-topbar {
+    /* Equal-width side zones keep the title centered on the whole bar
+       regardless of the side controls' widths: left = history, center = title,
+       right = edit toggle. The left zone is always rendered (empty in view
+       mode) so the two 1fr columns stay equal across modes. */
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    /* Fixed height (sized to the controls) so toggling Edit — which shows/hides
+       the undo/redo buttons — never resizes the bar. */
+    min-height: 52px;
+    background-color: var(--color-surface);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.map-topbar__history {
+    justify-self: start;
+    display: flex;
+    gap: 4px;
+}
+
+.map-topbar__icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* Keep the icon buttons within the bar height so they don't grow it. */
+    height: 32px;
+    width: 32px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    color: var(--color-text);
+    border-radius: 4px;
+    padding: 6px;
+    cursor: pointer;
+}
+
+.map-topbar__icon:disabled {
+    color: var(--color-text-muted);
+    border-color: var(--color-border);
+    cursor: default;
+    opacity: 0.5;
+}
+
+.map-topbar__title {
+    justify-self: center;
+    text-align: center;
+    font-weight: bold;
+    text-shadow: 0 1px 2px var(--color-shadow);
+}
+
+.map-topbar__edit {
+    justify-self: end;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    color: var(--color-text);
+    border-radius: 4px;
+    padding: 6px 14px;
+    font-family: inherit;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.map-topbar__edit[data-active="true"] {
+    background: var(--color-accent);
+    border-color: var(--color-accent-border);
+}
+
+/* Bottom tool strip shown while editing. Sits in the bottom zone and stacks
+   above the global navigation toolbar to visually replace it. */
+.edit-toolbar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    min-height: var(--bottom-toolbar-height);
+    z-index: calc(var(--z-bottom-toolbar) + 1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--color-surface);
+    border-top: 1px solid var(--color-border);
+    padding: 8px 16px;
+}
+
+.edit-toolbar__tool {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--color-accent);
+    border: 1px solid var(--color-accent-border);
+    color: var(--color-text);
+    border-radius: 4px;
+    padding: 8px 16px;
+    font-family: inherit;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+/* Camera picker sheet: a bottom sheet above the tool strip. */
+.camera-picker {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: calc(var(--z-bottom-toolbar) + 2);
+    display: flex;
+    flex-direction: column;
+    max-height: 60vh;
+    background-color: var(--color-surface);
+    border-top: 1px solid var(--color-border);
+    border-radius: 12px 12px 0 0;
+    box-shadow: 0 -8px 24px var(--color-shadow);
+}
+
+.camera-picker__header {
+    display: flex;
+    align-items: center;
+    padding: 16px;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.camera-picker__title {
+    flex: 1;
+    font-weight: bold;
+}
+
+.camera-picker__close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    color: var(--color-text);
+    cursor: pointer;
+    padding: 4px;
+}
+
+.camera-picker__list {
+    overflow-y: auto;
+}
+
+.camera-picker__item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    border-bottom: 1px solid var(--color-border);
+    color: var(--color-text);
+    font-family: inherit;
+    font-size: 1rem;
+    padding: 14px 16px;
+    cursor: pointer;
+}
+
+@media (hover: hover) {
+    .camera-picker__item:hover {
+        background-color: var(--color-surface-highlight);
+    }
+}
+
+.camera-picker__empty {
+    padding: 24px 16px;
+    color: var(--color-text-muted);
+    text-align: center;
+}
+
+/* Inspector sheet for the selected camera: replaces the tool strip while a
+   camera is selected. */
+.camera-inspector {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: calc(var(--z-bottom-toolbar) + 1);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    background-color: var(--color-surface);
+    border-top: 1px solid var(--color-border);
+    border-radius: 12px 12px 0 0;
+    box-shadow: 0 -8px 24px var(--color-shadow);
+    padding: 16px;
+}
+
+.camera-inspector__header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.camera-inspector__title {
+    flex: 1;
+    font-weight: bold;
+    font-size: 1.1rem;
+}
+
+.camera-inspector__title[data-orphaned="true"] {
+    color: var(--color-text-muted);
+    font-style: italic;
+}
+
+.camera-inspector__note {
+    color: var(--color-danger);
+    font-size: 0.85rem;
+}
+
+.camera-inspector__field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.camera-inspector__field-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.9rem;
+}
+
+.camera-inspector__field-value {
+    color: var(--color-text-muted);
+}
+
+.camera-inspector__field input[type="range"] {
+    width: 100%;
+    accent-color: var(--color-accent);
 }

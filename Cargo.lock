@@ -3026,11 +3026,13 @@ dependencies = [
  "dioxus",
  "dioxus-free-icons",
  "gloo-storage",
+ "js-sys",
  "reqwest",
  "serde",
  "serde_json",
  "shield-models",
  "thiserror 2.0.12",
+ "wasm-bindgen",
  "web-sys",
 ]
 

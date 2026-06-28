@@ -1,7 +1,59 @@
 use dioxus::prelude::*;
+use dioxus_free_icons::Icon;
+use dioxus_free_icons::icons::fi_icons::{FiCornerUpLeft, FiCornerUpRight};
 use shield_models::{FieldOfView, MapCamera, Point};
+use wasm_bindgen::JsCast;
+use wasm_bindgen::closure::Closure;
 
-use crate::components::map::map_camera::MapCameraMarker;
+use crate::components::map::camera_inspector::CameraInspector;
+use crate::components::map::edit_toolbar::{CameraPicker, EditToolbar};
+use crate::components::map::map_camera::{MARKER_RADIUS_CM, MapCameraMarker};
+use crate::hooks::{UseCamerasResult, UseMapResult, use_cameras, use_map};
+
+/// The single map edited in v1. The service lazily returns an empty map for any
+/// id, so a fixed default is sufficient until multi-map UI exists.
+const DEFAULT_MAP_ID: &str = "default";
+
+/// DOM id of the canvas frame element, used to locate it for measurement.
+const CANVAS_FRAME_ID: &str = "map-canvas-frame";
+
+/// Look up the canvas frame element in the DOM by its id.
+fn canvas_frame_element() -> Option<web_sys::Element> {
+    web_sys::window()?
+        .document()?
+        .get_element_by_id(CANVAS_FRAME_ID)
+}
+
+/// Read the canvas frame's bounding rect as `(left, top, width, height)` in
+/// viewport pixels, or `None` if it isn't in the DOM yet.
+fn canvas_frame_rect() -> Option<(f64, f64, f64, f64)> {
+    let rect = canvas_frame_element()?.get_bounding_client_rect();
+    Some((rect.left(), rect.top(), rect.width(), rect.height()))
+}
+
+/// Run `f` after the browser has applied layout for the current frame, using a
+/// double `requestAnimationFrame` (one frame to apply layout, one to be safe).
+/// Each callback is one-shot, so `Closure::once_into_js` is used to hand it to
+/// the browser without manual lifetime bookkeeping.
+fn after_next_layout(f: impl FnOnce() + 'static) {
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    let inner = Closure::once_into_js(f);
+    let outer = Closure::once_into_js(move || {
+        if let Some(window) = web_sys::window() {
+            let _ = window.request_animation_frame(inner.unchecked_ref());
+        }
+    });
+    let _ = window.request_animation_frame(outer.unchecked_ref());
+}
+
+/// Default field-of-view applied to a freshly placed camera.
+const DEFAULT_FOV: FieldOfView = FieldOfView {
+    direction_deg: 0,
+    angle_deg: 70,
+    range: 500,
+};
 
 /// Minimum / maximum zoom (screen px per logical cm). Panning is intentionally
 /// unconstrained, but zoom is clamped to keep the canvas usable.
@@ -10,6 +62,9 @@ const MAX_ZOOM: f64 = 5.0;
 
 /// Multiplier applied per wheel "click" / pinch step.
 const WHEEL_ZOOM_STEP: f64 = 0.0015;
+
+/// Smallest range a camera cone may be dragged to (centimeters).
+const MIN_RANGE_CM: i32 = 50;
 
 /// Viewport transform mapping logical world coordinates (centimeters) to screen
 /// pixels: `screen = world * zoom + pan`.
@@ -31,8 +86,8 @@ struct Viewport {
 
 impl Default for Viewport {
     fn default() -> Self {
-        // Start zoomed out enough to comfortably show the mock ~2000x1500 area
-        // with the origin near the top-left of the canvas.
+        // Start zoomed out enough to comfortably show a ~2000x1500 area with the
+        // origin near the top-left of the canvas.
         Self {
             pan_x: 40.0,
             pan_y: 40.0,
@@ -61,6 +116,12 @@ impl Viewport {
         self.zoom = new_zoom;
     }
 
+    /// Convert a screen-pixel point (relative to the canvas element) to a world
+    /// coordinate in centimeters.
+    fn screen_to_world(&self, sx: f64, sy: f64) -> (f64, f64) {
+        ((sx - self.pan_x) / self.zoom, (sy - self.pan_y) / self.zoom)
+    }
+
     /// SVG transform string for the world-space content group.
     fn transform(&self) -> String {
         format!(
@@ -68,10 +129,109 @@ impl Viewport {
             self.pan_x, self.pan_y, self.zoom
         )
     }
+
+    /// A viewport that fits the world-space rectangle `(min_x, min_y, max_x,
+    /// max_y)` centered within a canvas of `canvas_w` x `canvas_h` pixels.
+    ///
+    /// Zoom is chosen so the content fits both axes (with a little headroom via
+    /// `FIT_MARGIN`) and clamped to the allowed range; pan then maps the content
+    /// center to the canvas center.
+    fn fit_to_content(bounds: (f64, f64, f64, f64), canvas_w: f64, canvas_h: f64) -> Self {
+        let (min_x, min_y, max_x, max_y) = bounds;
+        let content_w = (max_x - min_x).max(1.0);
+        let content_h = (max_y - min_y).max(1.0);
+
+        let zoom = ((canvas_w / content_w).min(canvas_h / content_h) * FIT_MARGIN)
+            .clamp(MIN_ZOOM, MAX_ZOOM);
+
+        let content_cx = (min_x + max_x) / 2.0;
+        let content_cy = (min_y + max_y) / 2.0;
+
+        Self {
+            pan_x: canvas_w / 2.0 - content_cx * zoom,
+            pan_y: canvas_h / 2.0 - content_cy * zoom,
+            zoom,
+        }
+    }
+}
+
+/// Fraction of the canvas the fitted content fills, leaving a margin around it.
+const FIT_MARGIN: f64 = 0.85;
+
+/// Minimum half-extent (cm) folded around each camera so a single tiny cone
+/// still yields a non-degenerate (non-zero-size) box.
+const MIN_CONTENT_HALF_EXTENT: f64 = 50.0;
+
+/// Step (degrees) used when sampling a FOV arc for the bounding box. Small
+/// enough to tightly hug the arc, cheap enough for a handful of cameras.
+const ARC_SAMPLE_STEP_DEG: f64 = 2.0;
+
+/// World-space bounding box `(min_x, min_y, max_x, max_y)` in centimeters that
+/// tightly encloses what is actually drawn for every camera: the marker disc
+/// (`position` ± [`MARKER_RADIUS_CM`]) and the FOV wedge (apex at `position`
+/// plus its arc). Returns `None` for an empty set (callers keep the default
+/// view).
+///
+/// The wedge is directional, so a symmetric ±`range` square would pad the sides
+/// the cone doesn't face and mis-center the fit. Instead the arc is *sampled*
+/// (matching the cone math in [`map_camera`](super::map_camera)): screen angle
+/// (clockwise from +x, y-down) is `bearing - 90`, the wedge spans
+/// `direction_deg ± angle_deg / 2`, and each sample is `position + range *
+/// (cos θ, sin θ)`. Sampling avoids fiddly cardinal-crossing extrema math and
+/// stays cheap and reusable — e.g. a minimap can call it to size its world rect.
+fn content_bounds(cameras: &[MapCamera]) -> Option<(f64, f64, f64, f64)> {
+    if cameras.is_empty() {
+        return None;
+    }
+
+    let mut min_x = f64::INFINITY;
+    let mut min_y = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
+
+    let mut fold = |x: f64, y: f64| {
+        min_x = min_x.min(x);
+        min_y = min_y.min(y);
+        max_x = max_x.max(x);
+        max_y = max_y.max(y);
+    };
+
+    for camera in cameras {
+        let cx = camera.position.x as f64;
+        let cy = camera.position.y as f64;
+
+        // Marker disc, with a small minimum so a degenerate cone still has area.
+        let pad = MARKER_RADIUS_CM.max(MIN_CONTENT_HALF_EXTENT);
+        fold(cx - pad, cy - pad);
+        fold(cx + pad, cy + pad);
+
+        // FOV wedge: apex plus sampled arc (range away along each sampled angle).
+        let range = camera.fov.range as f64;
+        let half = camera.fov.angle_deg as f64 / 2.0;
+        let start = camera.fov.direction_deg as f64 - half - 90.0;
+        let end = camera.fov.direction_deg as f64 + half - 90.0;
+
+        let mut deg = start;
+        loop {
+            let theta = deg.min(end).to_radians();
+            fold(cx + range * theta.cos(), cy + range * theta.sin());
+            if deg >= end {
+                break;
+            }
+            deg += ARC_SAMPLE_STEP_DEG;
+        }
+    }
+
+    Some((min_x, min_y, max_x, max_y))
 }
 
 /// Active gesture being tracked across pointer/touch events.
-#[derive(Clone, Copy, PartialEq)]
+///
+/// Pan starts on empty canvas; the camera-manipulation gestures start on a
+/// marker / handle (which stops propagation so the canvas pan handler does not
+/// also fire — this is the target-based disambiguation). Manipulation gestures
+/// preview locally and commit exactly one edit on release.
+#[derive(Clone, PartialEq)]
 enum Gesture {
     None,
     /// One-pointer pan; stores the last screen position seen.
@@ -84,52 +244,47 @@ enum Gesture {
     Pinch {
         last_distance: f64,
     },
+    /// Dragging a selected camera's body. Tracks the last screen position so the
+    /// per-move delta can be converted to world cm.
+    MoveCamera {
+        camera_id: String,
+        last_x: f64,
+        last_y: f64,
+    },
+    /// Dragging the aim handle (rotates the cone toward the pointer).
+    AimCamera {
+        camera_id: String,
+    },
+    /// Dragging the range handle (lengthens / shortens the cone).
+    RangeCamera {
+        camera_id: String,
+    },
 }
 
-/// Mock cameras spread across a ~2000x1500 cm area with varied directions and
-/// ranges, so the canvas renders something meaningful.
-///
-/// PLACEHOLDER: hardcoded mock data until this view is wired to the `use_map`
-/// hook for live map data; remove this then.
-fn mock_cameras() -> Vec<MapCamera> {
-    vec![
-        MapCamera {
-            camera_id: "mock-1".to_string(),
-            position: Point { x: 300, y: 300 },
-            fov: FieldOfView {
-                direction_deg: 135, // aimed SE
-                angle_deg: 70,
-                range: 700,
-            },
-        },
-        MapCamera {
-            camera_id: "mock-2".to_string(),
-            position: Point { x: 1700, y: 350 },
-            fov: FieldOfView {
-                direction_deg: 225, // aimed SW
-                angle_deg: 90,
-                range: 600,
-            },
-        },
-        MapCamera {
-            camera_id: "mock-3".to_string(),
-            position: Point { x: 1000, y: 1200 },
-            fov: FieldOfView {
-                direction_deg: 0, // aimed North
-                angle_deg: 50,
-                range: 900,
-            },
-        },
-        MapCamera {
-            camera_id: "mock-4".to_string(),
-            position: Point { x: 250, y: 1100 },
-            fov: FieldOfView {
-                direction_deg: 60, // aimed ENE
-                angle_deg: 110,
-                range: 500,
-            },
-        },
-    ]
+impl Gesture {
+    /// Stable label for the active gesture, surfaced as a `data-gesture`
+    /// attribute on the canvas so the cursor stays consistent while dragging
+    /// even as the pointer crosses child elements.
+    fn label(&self) -> &'static str {
+        match self {
+            Gesture::None => "none",
+            Gesture::Pan { .. } => "pan",
+            Gesture::Pinch { .. } => "pinch",
+            Gesture::MoveCamera { .. } => "move",
+            Gesture::AimCamera { .. } => "aim",
+            Gesture::RangeCamera { .. } => "range",
+        }
+    }
+}
+
+/// A local, uncommitted preview of an in-progress manipulation. The canvas
+/// renders from this instead of the stored map while a gesture is active so the
+/// user sees live feedback; the matching edit is committed once on release.
+#[derive(Clone, PartialEq)]
+enum DragPreview {
+    None,
+    Position { camera_id: String, position: Point },
+    Fov { camera_id: String, fov: FieldOfView },
 }
 
 /// Euclidean distance between two points.
@@ -137,67 +292,397 @@ fn distance(ax: f64, ay: f64, bx: f64, by: f64) -> f64 {
     ((ax - bx).powi(2) + (ay - by).powi(2)).sqrt()
 }
 
-/// Read-only, pan/zoom-able map canvas rendering cameras and their FOV cones
-/// from mock data. The viewport foundation later rounds build on.
+/// World-space bearing from a camera center to a world point, expressed as a
+/// true-North clockwise direction in whole degrees (0 = up/North), matching the
+/// FOV convention. Inverse of the cone math: screen angle `theta` (clockwise
+/// from +x, y-down) relates to bearing `b` by `b = theta + 90`.
+fn bearing_to(cx: f64, cy: f64, wx: f64, wy: f64) -> u16 {
+    let theta = (wy - cy).atan2(wx - cx).to_degrees();
+    let bearing = (theta + 90.0).rem_euclid(360.0);
+    bearing.round() as u16
+}
+
+/// Convert a pointer event to canvas-relative pixels using a cached canvas
+/// origin (the canvas's viewport-relative top-left).
+///
+/// All pointer math must share one coordinate space, but `element_coordinates`
+/// is relative to whichever child element is under the pointer — during a drag
+/// the pointer crosses the markers, cones, handles and grid, so its origin keeps
+/// changing. `client_coordinates` is viewport-relative and target-independent;
+/// subtracting the cached canvas origin yields a stable canvas-relative point
+/// that every gesture (pan / move / aim / range / wheel) can rely on.
+fn canvas_xy(evt: &PointerData, origin: (f64, f64)) -> (f64, f64) {
+    let client = evt.client_coordinates();
+    (client.x - origin.0, client.y - origin.1)
+}
+
+/// Map host: live data, pan/zoom viewport, and a full edit experience (place /
+/// select / move / aim / inspect / delete). Outside edit mode it is a read-only,
+/// pan/zoom-able canvas.
 #[component]
 pub fn MapView() -> Element {
+    let UseMapResult {
+        map,
+        loading: map_loading,
+        place_camera,
+        move_camera,
+        aim_camera,
+        remove_camera,
+        undo,
+        redo,
+        can_undo,
+        can_redo,
+    } = use_map(DEFAULT_MAP_ID.to_string());
+
+    let UseCamerasResult {
+        cameras: camera_list,
+        loading: cameras_loading,
+    } = use_cameras();
+
     let mut viewport = use_signal(Viewport::default);
     let mut gesture = use_signal(|| Gesture::None);
+    let mut drag_preview = use_signal(|| DragPreview::None);
 
-    let cameras = use_signal(mock_cameras);
+    let mut editing = use_signal(|| false);
+    let mut selection = use_signal(|| None::<String>);
+    // The camera id chosen in the picker and awaiting a placement tap.
+    let mut placing = use_signal(|| None::<String>);
+    let mut picker_open = use_signal(|| false);
+
+    // Cached canvas geometry from the frame's bounding rect: the viewport-relative
+    // top-left (origin) drives canvas-relative pointer math (see `canvas_xy`), and
+    // the size drives the initial fit-to-content. The rect is stable during a
+    // drag, so the cached values stay correct.
+    let mut canvas_origin = use_signal(|| (0.0_f64, 0.0_f64));
+    let mut canvas_size = use_signal(|| (0.0_f64, 0.0_f64));
+    // Whether the initial fit-to-content has been applied. Guards against
+    // re-fitting on later edits / pans / zooms.
+    let mut fitted = use_signal(|| false);
+
+    // Measure the frame with a ResizeObserver rather than a one-shot mount read.
+    // A mount-time read can run before the browser's first layout pass on a fresh
+    // / deep-link load, measuring a not-yet-laid-out box; the observer instead
+    // fires once *after* layout (fixing that case) and again on every size change,
+    // so it also subsumes a window-resize listener and is the single source of
+    // truth for both origin and size. The observer + its callback closure are
+    // held in component state so they stay alive for the component's lifetime.
+    let _observer = use_hook(|| {
+        let callback = Closure::<dyn FnMut()>::new(move || {
+            if let Some((left, top, width, height)) = canvas_frame_rect() {
+                canvas_origin.set((left, top));
+                canvas_size.set((width, height));
+            }
+        });
+
+        // The frame may not be in the DOM on the very first effect tick; retry on
+        // the next layout frame if so.
+        let observer = web_sys::ResizeObserver::new(callback.as_ref().unchecked_ref()).ok();
+        if let Some(observer) = &observer {
+            if let Some(element) = canvas_frame_element() {
+                observer.observe(&element);
+            } else {
+                let observer = observer.clone();
+                after_next_layout(move || {
+                    if let Some(element) = canvas_frame_element() {
+                        observer.observe(&element);
+                    }
+                });
+            }
+        }
+
+        // Keep both alive for the component's lifetime: dropping the closure
+        // would invalidate the observer's callback, and dropping the observer
+        // would stop notifications. `Rc` makes the stored state `Clone` (which
+        // `use_hook` requires) without cloning the non-`Clone` closure.
+        std::rc::Rc::new((observer, callback))
+    });
+
+    let placed = map.as_ref().map(|m| m.cameras.clone()).unwrap_or_default();
+
+    // Fit and center the placed cameras exactly once, after layout has settled.
+    //
+    // On a hard / deep-link load the map data can arrive before the first styled
+    // layout settles, so measuring synchronously here would fit against a
+    // transient pre-layout size and the one-time `fitted` lock would freeze that
+    // wrong value. To avoid that we defer to a post-layout animation frame and
+    // measure the frame *fresh* there (double RAF: one frame to apply layout,
+    // one to be safe), so the fit always uses the settled size. `fitted` still
+    // locks it to a single fit (now the correct one) and never fights later user
+    // pan/zoom; an empty map keeps the default viewport. `use_reactive` re-runs
+    // this when the cameras change (map load); guard reads use `peek` so the
+    // effect depends only on `placed`.
+    use_effect(use_reactive((&placed,), move |(placed,)| {
+        if *fitted.peek() || placed.is_empty() {
+            return;
+        }
+        after_next_layout(move || {
+            let Some((_, _, width, height)) = canvas_frame_rect() else {
+                return;
+            };
+            if width > 0.0 && height > 0.0 && !*fitted.peek() {
+                if let Some(bounds) = content_bounds(&placed) {
+                    viewport.set(Viewport::fit_to_content(bounds, width, height));
+                    fitted.set(true);
+                }
+            }
+        });
+    }));
+
+    // Resolve a placed camera's display name, or `None` when its reference is an
+    // orphan (underlying camera deleted).
+    let name_for = {
+        let camera_list = camera_list.clone();
+        move |camera_id: &str| {
+            camera_list
+                .iter()
+                .find(|c| c.id == camera_id)
+                .map(|c| c.name.clone())
+        }
+    };
+
+    // Cameras not yet on the map, offered by the picker.
+    let unplaced: Vec<shield_models::Camera> = camera_list
+        .iter()
+        .filter(|c| !placed.iter().any(|p| p.camera_id == c.id))
+        .cloned()
+        .collect();
+
+    // Apply any active preview so the canvas reflects the in-progress gesture.
+    let preview = drag_preview.read().clone();
+    let display_cameras: Vec<MapCamera> = placed
+        .iter()
+        .map(|camera| {
+            let mut camera = camera.clone();
+            match &preview {
+                DragPreview::Position {
+                    camera_id,
+                    position,
+                } if *camera_id == camera.camera_id => {
+                    camera.position = position.clone();
+                }
+                DragPreview::Fov { camera_id, fov } if *camera_id == camera.camera_id => {
+                    camera.fov = fov.clone();
+                }
+                _ => {}
+            }
+            camera
+        })
+        .collect();
 
     let transform = viewport.read().transform();
+    let selected_id = selection.read().clone();
+    let is_editing = *editing.read();
+    let is_placing = placing.read().is_some();
+    let gesture_label = gesture.read().label();
+
+    // The currently selected camera (after preview), for the inspector.
+    let selected_camera = selected_id
+        .as_ref()
+        .and_then(|id| display_cameras.iter().find(|c| &c.camera_id == id).cloned());
 
     rsx! {
         div { class: "primary-view map-view",
-            svg {
-                class: "map-canvas",
-                xmlns: "http://www.w3.org/2000/svg",
-                // Touch-action none lets us own panning/pinching instead of the
-                // browser scrolling/zooming the page.
-                style: "touch-action: none;",
+            // --- Top bar (title, undo/redo, edit toggle) ---
+            // Rendered before the canvas so it sits in normal flow above it.
+            div { class: "map-topbar",
+                // Left zone is always rendered (empty in view mode) so the grid
+                // keeps three cells and its equal side columns stay balanced,
+                // keeping the title centered across modes.
+                div { class: "map-topbar__history",
+                    if is_editing {
+                        button {
+                            class: "map-topbar__icon",
+                            disabled: !can_undo,
+                            onclick: move |_| undo(()),
+                            Icon { width: 18, height: 18, icon: FiCornerUpLeft }
+                        }
+                        button {
+                            class: "map-topbar__icon",
+                            disabled: !can_redo,
+                            onclick: move |_| redo(()),
+                            Icon { width: 18, height: 18, icon: FiCornerUpRight }
+                        }
+                    }
+                }
+
+                span { class: "map-topbar__title",
+                    if map_loading || cameras_loading {
+                        "Loading map…"
+                    } else {
+                        "Map"
+                    }
+                }
+
+                button {
+                    class: "map-topbar__edit",
+                    "data-active": is_editing,
+                    onclick: move |_| {
+                        let next = !*editing.read();
+                        editing.set(next);
+                        if !next {
+                            selection.set(None);
+                            placing.set(None);
+                            picker_open.set(false);
+                        }
+                    },
+                    if is_editing {
+                        "Done"
+                    } else {
+                        "Edit"
+                    }
+                }
+            }
+
+            // Frame is the svg's positioning context and the measured element:
+            // the svg fills it via absolute inset:0, so the frame's rect is the
+            // canvas rect. We measure the div (reliable, via the ResizeObserver
+            // keyed on this id) rather than the svg, whose percentage size
+            // collapses to its intrinsic 300x150 on WebKit. Because the svg
+            // exactly overlaps the frame, the frame origin is the svg origin, so
+            // `canvas_xy` pointer math stays correct.
+            div {
+                id: "map-canvas-frame",
+                class: "map-canvas-frame",
+                svg {
+                    class: "map-canvas",
+                    "data-placing": is_placing,
+                    "data-gesture": gesture_label,
+                    xmlns: "http://www.w3.org/2000/svg",
+                    // Touch-action none lets us own panning/pinching instead of
+                    // the browser scrolling/zooming the page.
+                    style: "touch-action: none;",
 
                 // --- Wheel zoom (desktop) ---
                 onwheel: move |evt| {
                     let delta = evt.data().delta().strip_units().y;
-                    let coords = evt.data().client_coordinates();
-                    // Scrolling up (negative delta) zooms in.
+                    let client = evt.data().client_coordinates();
+                    let origin = *canvas_origin.read();
+                    let (sx, sy) = (client.x - origin.0, client.y - origin.1);
                     let factor = (-delta * WHEEL_ZOOM_STEP).exp();
-                    viewport.write().zoom_at(factor, coords.x, coords.y);
+                    viewport.write().zoom_at(factor, sx, sy);
                 },
 
-                // --- Pointer pan (mouse / single-finger) ---
+                // --- Pointer (mouse / single finger) ---
+                // A pointer-down that reaches the canvas started on empty space
+                // (marker / handle handlers stop propagation), so this is a pan.
+                // In placing mode it instead drops the chosen camera; in edit
+                // mode with nothing under it, it deselects.
                 onpointerdown: move |evt| {
-                    let coords = evt.data().client_coordinates();
-                    gesture
-                        .set(Gesture::Pan {
-                            last_x: coords.x,
-                            last_y: coords.y,
+                    let (cx, cy) = canvas_xy(&evt.data(), *canvas_origin.read());
+                    let pending = placing.read().clone();
+                    if let Some(camera_id) = pending {
+                        let (wx, wy) = viewport.read().screen_to_world(cx, cy);
+                        place_camera(MapCamera {
+                            camera_id: camera_id.clone(),
+                            position: Point { x: wx.round() as i32, y: wy.round() as i32 },
+                            fov: DEFAULT_FOV,
                         });
+                        placing.set(None);
+                        selection.set(Some(camera_id));
+                        return;
+                    }
+                    if is_editing {
+                        selection.set(None);
+                    }
+                    gesture.set(Gesture::Pan { last_x: cx, last_y: cy });
                 },
                 onpointermove: move |evt| {
-                    let current = *gesture.read();
-                    if let Gesture::Pan { last_x, last_y } = current {
-                        let coords = evt.data().client_coordinates();
-                        let dx = coords.x - last_x;
-                        let dy = coords.y - last_y;
-                        viewport.write().pan_by(dx, dy);
-                        gesture
-                            .set(Gesture::Pan {
-                                last_x: coords.x,
-                                last_y: coords.y,
-                            });
+                    let (cx, cy) = canvas_xy(&evt.data(), *canvas_origin.read());
+                    let current = gesture.read().clone();
+                    match current {
+                        Gesture::Pan { last_x, last_y } => {
+                            viewport.write().pan_by(cx - last_x, cy - last_y);
+                            gesture.set(Gesture::Pan { last_x: cx, last_y: cy });
+                        }
+                        Gesture::MoveCamera { camera_id, last_x, last_y } => {
+                            let zoom = viewport.read().zoom;
+                            let dx = (cx - last_x) / zoom;
+                            let dy = (cy - last_y) / zoom;
+                            let base = drag_preview
+                                .read()
+                                .position_for(&camera_id)
+                                .or_else(|| {
+                                    placed
+                                        .iter()
+                                        .find(|c| c.camera_id == camera_id)
+                                        .map(|c| c.position.clone())
+                                });
+                            if let Some(base) = base {
+                                let position = Point {
+                                    x: base.x + dx.round() as i32,
+                                    y: base.y + dy.round() as i32,
+                                };
+                                drag_preview
+                                    .set(DragPreview::Position {
+                                        camera_id: camera_id.clone(),
+                                        position,
+                                    });
+                                gesture
+                                    .set(Gesture::MoveCamera {
+                                        camera_id,
+                                        last_x: cx,
+                                        last_y: cy,
+                                    });
+                            }
+                        }
+                        Gesture::AimCamera { camera_id } => {
+                            if let Some(camera) = placed.iter().find(|c| c.camera_id == camera_id) {
+                                let (wx, wy) = viewport.read().screen_to_world(cx, cy);
+                                let direction_deg = bearing_to(
+                                    camera.position.x as f64,
+                                    camera.position.y as f64,
+                                    wx,
+                                    wy,
+                                );
+                                let fov = FieldOfView {
+                                    direction_deg,
+                                    ..drag_preview.read().fov_for(&camera_id).unwrap_or(camera.fov.clone())
+                                };
+                                drag_preview.set(DragPreview::Fov { camera_id, fov });
+                            }
+                        }
+                        Gesture::RangeCamera { camera_id } => {
+                            if let Some(camera) = placed.iter().find(|c| c.camera_id == camera_id) {
+                                let (wx, wy) = viewport.read().screen_to_world(cx, cy);
+                                let dist = distance(
+                                    camera.position.x as f64,
+                                    camera.position.y as f64,
+                                    wx,
+                                    wy,
+                                );
+                                let range = (dist.round() as i32).max(MIN_RANGE_CM);
+                                let fov = FieldOfView {
+                                    range,
+                                    ..drag_preview.read().fov_for(&camera_id).unwrap_or(camera.fov.clone())
+                                };
+                                drag_preview.set(DragPreview::Fov { camera_id, fov });
+                            }
+                        }
+                        Gesture::None | Gesture::Pinch { .. } => {}
                     }
                 },
                 onpointerup: move |_| {
-                    if matches!(*gesture.read(), Gesture::Pan { .. }) {
-                        gesture.set(Gesture::None);
+                    // Commit exactly one edit for the gesture that just ended.
+                    let current = gesture.read().clone();
+                    match current {
+                        Gesture::MoveCamera { camera_id, .. } => {
+                            if let DragPreview::Position { position, .. } = drag_preview.read().clone() {
+                                move_camera((camera_id, position));
+                            }
+                        }
+                        Gesture::AimCamera { camera_id } | Gesture::RangeCamera { camera_id } => {
+                            if let DragPreview::Fov { fov, .. } = drag_preview.read().clone() {
+                                aim_camera((camera_id, fov));
+                            }
+                        }
+                        _ => {}
                     }
+                    drag_preview.set(DragPreview::None);
+                    gesture.set(Gesture::None);
                 },
                 onpointercancel: move |_| {
-                    if matches!(*gesture.read(), Gesture::Pan { .. }) {
-                        gesture.set(Gesture::None);
-                    }
+                    drag_preview.set(DragPreview::None);
+                    gesture.set(Gesture::None);
                 },
 
                 // --- Touch pinch zoom ---
@@ -214,7 +699,7 @@ pub fn MapView() -> Element {
                 },
                 ontouchmove: move |evt| {
                     let touches = evt.data().touches();
-                    let current = *gesture.read();
+                    let current = gesture.read().clone();
                     if touches.len() == 2
                         && let Gesture::Pinch { last_distance, .. } = current
                     {
@@ -251,20 +736,136 @@ pub fn MapView() -> Element {
                         }
                     }
                 }
-                rect {
-                    width: "100%",
-                    height: "100%",
-                    fill: "url(#map-grid)",
-                }
+                rect { width: "100%", height: "100%", fill: "url(#map-grid)" }
 
-                // World-space content: pan + zoom applied here so cameras stay
-                // in logical cm coordinates.
+                // World-space content: pan + zoom applied here so cameras stay in
+                // logical cm coordinates.
                 g { transform: "{transform}",
-                    for camera in cameras.read().iter().cloned() {
-                        MapCameraMarker { key: "{camera.camera_id}", camera }
+                    for camera in display_cameras.iter().cloned() {
+                        {
+                            let id = camera.camera_id.clone();
+                            let orphaned = name_for(&id).is_none();
+                            let is_selected = selected_id.as_deref() == Some(id.as_str());
+                            rsx! {
+                                MapCameraMarker {
+                                    key: "{id}",
+                                    camera,
+                                    selected: is_selected,
+                                    editing: is_editing,
+                                    orphaned,
+                                    on_body_pointer_down: {
+                                        let id = id.clone();
+                                        move |evt: Event<PointerData>| {
+                                            selection.set(Some(id.clone()));
+                                            let (cx, cy) = canvas_xy(&evt.data(), *canvas_origin.read());
+                                            gesture
+                                                .set(Gesture::MoveCamera {
+                                                    camera_id: id.clone(),
+                                                    last_x: cx,
+                                                    last_y: cy,
+                                                });
+                                        }
+                                    },
+                                    on_aim_pointer_down: {
+                                        let id = id.clone();
+                                        move |_evt: Event<PointerData>| {
+                                            gesture.set(Gesture::AimCamera { camera_id: id.clone() });
+                                        }
+                                    },
+                                    on_range_pointer_down: {
+                                        let id = id.clone();
+                                        move |_evt: Event<PointerData>| {
+                                            gesture.set(Gesture::RangeCamera { camera_id: id.clone() });
+                                        }
+                                    },
+                                }
+                            }
+                        }
+                    }
                     }
                 }
             }
+
+            // --- Bottom chrome (edit mode only) ---
+            // Inspector takes precedence over the tool strip when a camera is
+            // selected. Both sit above the global navigation toolbar.
+            if is_editing {
+                if let Some(camera) = selected_camera.clone() {
+                    CameraInspector {
+                        name: name_for(&camera.camera_id),
+                        fov: camera.fov.clone(),
+                        on_preview_fov: {
+                            // Live, uncommitted preview: drive the same drag
+                            // preview the on-canvas handles use so the cone
+                            // (and the inspector's own `fov` prop) update in
+                            // real time without persisting or touching undo.
+                            let id = camera.camera_id.clone();
+                            move |fov| {
+                                drag_preview
+                                    .set(DragPreview::Fov {
+                                        camera_id: id.clone(),
+                                        fov,
+                                    });
+                            }
+                        },
+                        on_change_fov: {
+                            // Release: commit one edit and drop the preview.
+                            let id = camera.camera_id.clone();
+                            move |fov| {
+                                aim_camera((id.clone(), fov));
+                                drag_preview.set(DragPreview::None);
+                            }
+                        },
+                        on_delete: {
+                            let id = camera.camera_id.clone();
+                            move |_| {
+                                remove_camera(id.clone());
+                                selection.set(None);
+                            }
+                        },
+                    }
+                } else {
+                    EditToolbar {
+                        on_add: move |_| {
+                            placing.set(None);
+                            picker_open.set(true);
+                        },
+                    }
+                }
+            }
+
+            // --- Camera picker sheet ---
+            if is_editing && *picker_open.read() {
+                CameraPicker {
+                    cameras: unplaced.clone(),
+                    on_pick: move |id: String| {
+                        placing.set(Some(id));
+                        picker_open.set(false);
+                    },
+                    on_close: move |_| picker_open.set(false),
+                }
+            }
+        }
+    }
+}
+
+impl DragPreview {
+    /// The previewed position for `camera_id`, if a position preview is active.
+    fn position_for(&self, camera_id: &str) -> Option<Point> {
+        match self {
+            DragPreview::Position {
+                camera_id: id,
+                position,
+            } if id == camera_id => Some(position.clone()),
+            _ => None,
+        }
+    }
+
+    /// The previewed FOV for `camera_id`, if a FOV preview is active.
+    fn fov_for(&self, camera_id: &str) -> Option<FieldOfView> {
+        match self {
+            DragPreview::Fov { camera_id: id, fov } if id == camera_id => Some(fov.clone()),
+            _ => None,
         }
     }
 }

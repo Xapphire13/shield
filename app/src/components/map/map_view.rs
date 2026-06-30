@@ -556,6 +556,24 @@ pub fn MapView() -> Element {
         None
     };
 
+    // Zoom shown as a percentage of the auto-fit scale: 100% is the default
+    // fit-to-content framing the map opens at, >100% is zoomed in past it. Falls
+    // back to the raw scale when there is no content / unmeasured canvas to
+    // define a fit reference.
+    let zoom_percent = {
+        let zoom = viewport.read().zoom;
+        let fit_zoom = if canvas_w > 0.0 && canvas_h > 0.0 {
+            content_bounds(&display_cameras)
+                .map(|bounds| Viewport::fit_to_content(bounds, canvas_w, canvas_h).zoom)
+        } else {
+            None
+        };
+        match fit_zoom {
+            Some(fit) if fit > 0.0 => (zoom / fit * 100.0).round() as i64,
+            _ => (zoom * 100.0).round() as i64,
+        }
+    };
+
     rsx! {
         div { class: "primary-view map-view",
             // --- Top bar (title, undo/redo, edit toggle) ---
@@ -1001,7 +1019,7 @@ pub fn MapView() -> Element {
             // around the canvas center (so the center stays put), clamped by the
             // existing zoom clamp.
             ZoomControls {
-                percent: (viewport.read().zoom * 100.0).round() as i64,
+                percent: zoom_percent,
                 on_zoom_out: move |_| {
                     let (cw, ch) = *canvas_size.read();
                     viewport.write().zoom_at(1.0 / BUTTON_ZOOM_STEP, cw / 2.0, ch / 2.0);

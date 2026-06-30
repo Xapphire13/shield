@@ -12,6 +12,7 @@ use crate::components::map::edit_toolbar::{CameraPicker, EditToolbar};
 use crate::components::map::map_camera::{MARKER_RADIUS_CM, MapCameraMarker};
 use crate::components::map::minimap::Minimap;
 use crate::components::map::unplaced_badge::UnplacedBadge;
+use crate::components::map::zoom_controls::ZoomControls;
 use crate::hooks::{UseCamerasResult, UseMapResult, use_cameras, use_map};
 
 /// The single map edited in v1. The service lazily returns an empty map for any
@@ -66,6 +67,11 @@ const MAX_ZOOM: f64 = 5.0;
 
 /// Multiplier applied per wheel "click" / pinch step.
 const WHEEL_ZOOM_STEP: f64 = 0.0015;
+
+/// Multiplier applied per click of the `+` / `−` zoom buttons. `+` multiplies
+/// the current zoom by this; `−` divides by it. The existing zoom clamp keeps it
+/// within `MIN_ZOOM`/`MAX_ZOOM`.
+const BUTTON_ZOOM_STEP: f64 = 1.2;
 
 /// Smallest range a camera cone may be dragged to (centimeters).
 const MIN_RANGE_CM: i32 = 50;
@@ -550,6 +556,24 @@ pub fn MapView() -> Element {
         None
     };
 
+    // Zoom shown as a percentage of the auto-fit scale: 100% is the default
+    // fit-to-content framing the map opens at, >100% is zoomed in past it. Falls
+    // back to the raw scale when there is no content / unmeasured canvas to
+    // define a fit reference.
+    let zoom_percent = {
+        let zoom = viewport.read().zoom;
+        let fit_zoom = if canvas_w > 0.0 && canvas_h > 0.0 {
+            content_bounds(&display_cameras)
+                .map(|bounds| Viewport::fit_to_content(bounds, canvas_w, canvas_h).zoom)
+        } else {
+            None
+        };
+        match fit_zoom {
+            Some(fit) if fit > 0.0 => (zoom / fit * 100.0).round() as i64,
+            _ => (zoom * 100.0).round() as i64,
+        }
+    };
+
     rsx! {
         div { class: "primary-view map-view",
             // --- Top bar (title, undo/redo, edit toggle) ---
@@ -987,6 +1011,29 @@ pub fn MapView() -> Element {
             // open inspector / picker simply renders over it.
             if !unplaced.is_empty() {
                 UnplacedBadge { count: unplaced.len() }
+            }
+
+            // --- Zoom controls (persistent, below the minimap) ---
+            // Always rendered, even when the minimap auto-hides: zooming in with
+            // `+` can bring the hidden minimap back. The `+` / `−` buttons zoom
+            // around the canvas center (so the center stays put), clamped by the
+            // existing zoom clamp.
+            ZoomControls {
+                percent: zoom_percent,
+                on_zoom_out: move |_| {
+                    let (cw, ch) = *canvas_size.read();
+                    viewport.write().zoom_at(1.0 / BUTTON_ZOOM_STEP, cw / 2.0, ch / 2.0);
+                },
+                on_zoom_in: move |_| {
+                    let (cw, ch) = *canvas_size.read();
+                    viewport.write().zoom_at(BUTTON_ZOOM_STEP, cw / 2.0, ch / 2.0);
+                },
+                on_reset_zoom: move |_| {
+                    let (cw, ch) = *canvas_size.read();
+                    if let Some(bounds) = content_bounds(&display_cameras) {
+                        viewport.set(Viewport::fit_to_content(bounds, cw, ch));
+                    }
+                },
             }
 
             // --- Camera picker sheet ---

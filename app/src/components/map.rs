@@ -5,5 +5,6 @@ pub mod map_camera;
 pub mod map_view;
 pub mod minimap;
 pub mod unplaced_badge;
+pub mod zoom_controls;
 
 pub use map_view::MapView;

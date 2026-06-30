@@ -1028,6 +1028,12 @@ pub fn MapView() -> Element {
                     let (cw, ch) = *canvas_size.read();
                     viewport.write().zoom_at(BUTTON_ZOOM_STEP, cw / 2.0, ch / 2.0);
                 },
+                on_reset_zoom: move |_| {
+                    let (cw, ch) = *canvas_size.read();
+                    if let Some(bounds) = content_bounds(&display_cameras) {
+                        viewport.set(Viewport::fit_to_content(bounds, cw, ch));
+                    }
+                },
             }
 
             // --- Camera picker sheet ---

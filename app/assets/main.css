@@ -915,9 +915,18 @@ ul {
     justify-content: center;
     min-width: 52px;
     padding: 0 8px;
+    border: none;
     border-left: 1px solid var(--color-border);
     border-right: 1px solid var(--color-border);
+    background: var(--color-surface);
+    color: var(--color-text);
+    font-size: 13px;
     font-variant-numeric: tabular-nums;
+    cursor: pointer;
+}
+
+.map-zoom-controls__percent:active {
+    background: var(--color-surface-highlight);
 }
 
 /* Bottom-right viewport navigator. Floats over the canvas, stacked ABOVE the

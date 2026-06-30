@@ -17,6 +17,8 @@ pub fn ZoomControls(
     on_zoom_out: Callback<()>,
     /// Called when the plus button is pressed (zoom in).
     on_zoom_in: Callback<()>,
+    /// Called when the percentage label is clicked (reset to 100% / auto-fit).
+    on_reset_zoom: Callback<()>,
 ) -> Element {
     rsx! {
         div { class: "map-zoom-controls",
@@ -26,7 +28,12 @@ pub fn ZoomControls(
                 onclick: move |_| on_zoom_out.call(()),
                 "−"
             }
-            span { class: "map-zoom-controls__percent", "{percent}%" }
+            button {
+                class: "map-zoom-controls__percent",
+                "aria-label": "Reset zoom to fit",
+                onclick: move |_| on_reset_zoom.call(()),
+                "{percent}%"
+            }
             button {
                 class: "map-zoom-controls__button",
                 "aria-label": "Zoom in",

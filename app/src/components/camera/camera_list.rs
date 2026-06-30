@@ -3,6 +3,7 @@ use dioxus::prelude::*;
 use crate::{
     components::{
         Camera, CameraActions, ConfirmationModal, ConfirmationModalType, GroupActions, RowGroup,
+        TopBar,
     },
     hooks::{UseCamerasResult, use_cameras, use_update_recording_mode},
     utils::{get_camera_ids, get_camera_names_by_ids, group_cameras_by_tags},
@@ -59,10 +60,15 @@ pub fn CameraList() -> Element {
     let tags = tags; // Remove mutability
 
     rsx! {
-        div { class: "primary-view home-container",
-            if loading {
-                "Loading..."
-            }
+        div { class: "primary-view list-view",
+            // Matching top bar above the scrollable list. The List has no
+            // edit/history controls, so only the centered title is shown.
+            TopBar { title: "Cameras" }
+
+            div { class: "list-view__content",
+                if loading {
+                    "Loading..."
+                }
 
             {
                 tags.iter()
@@ -119,6 +125,7 @@ pub fn CameraList() -> Element {
                         }
                     })}
                 }
+            }
             }
 
             match confirmation_modal_type() {

@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 use dioxus_free_icons::Icon;
 use dioxus_free_icons::icons::ld_icons::{LdCornerUpLeft, LdCornerUpRight};
-use shield_models::{FieldOfView, MapCamera, MapWall, Point, WallColor};
+use shield_models::{DoorSwing, FieldOfView, MapCamera, MapDoor, MapWall, Point, WallColor};
 use wasm_bindgen::JsCast;
 use wasm_bindgen::closure::Closure;
 
@@ -10,6 +10,7 @@ use crate::components::map::camera_info::CameraInfo;
 use crate::components::map::camera_inspector::CameraInspector;
 use crate::components::map::edit_toolbar::{CameraPicker, EditToolbar};
 use crate::components::map::map_camera::{MARKER_RADIUS_CM, MapCameraMarker};
+use crate::components::map::map_door::MapDoorMarker;
 use crate::components::map::map_wall::MapWallPath;
 use crate::components::map::minimap::Minimap;
 use crate::components::map::unplaced_badge::UnplacedBadge;
@@ -193,8 +194,9 @@ const ARC_SAMPLE_STEP_DEG: f64 = 2.0;
 /// World-space bounding box `(min_x, min_y, max_x, max_y)` in centimeters that
 /// tightly encloses what is actually drawn for every camera (the marker disc
 /// (`position` ± [`MARKER_RADIUS_CM`]) and the FOV wedge (apex at `position`
-/// plus its arc)) and every wall vertex. Returns `None` only when both
-/// `cameras` and `walls` are empty (callers keep the default view).
+/// plus its arc)), every wall vertex, and every door endpoint. Returns `None`
+/// only when `cameras`, `walls`, and `doors` are all empty (callers keep the
+/// default view).
 ///
 /// The wedge is directional, so a symmetric ±`range` square would pad the sides
 /// the cone doesn't face and mis-center the fit. Instead the arc is *sampled*
@@ -204,11 +206,15 @@ const ARC_SAMPLE_STEP_DEG: f64 = 2.0;
 /// (cos θ, sin θ)`. Sampling avoids fiddly cardinal-crossing extrema math and
 /// stays cheap and reusable — e.g. a minimap can call it to size its world rect.
 ///
-/// A wall vertex is a literal point (unlike a camera marker's disc), so no
-/// extra padding is folded in for it — the wall's stroke width is visually
-/// negligible for bounds purposes.
-fn content_bounds(cameras: &[MapCamera], walls: &[MapWall]) -> Option<(f64, f64, f64, f64)> {
-    if cameras.is_empty() && walls.is_empty() {
+/// A wall vertex or door endpoint is a literal point (unlike a camera
+/// marker's disc), so no extra padding is folded in for either — the
+/// stroke width is visually negligible for bounds purposes.
+fn content_bounds(
+    cameras: &[MapCamera],
+    walls: &[MapWall],
+    doors: &[MapDoor],
+) -> Option<(f64, f64, f64, f64)> {
+    if cameras.is_empty() && walls.is_empty() && doors.is_empty() {
         return None;
     }
 
@@ -254,6 +260,11 @@ fn content_bounds(cameras: &[MapCamera], walls: &[MapWall]) -> Option<(f64, f64,
         for vertex in &wall.vertices {
             fold(vertex.x as f64, vertex.y as f64);
         }
+    }
+
+    for door in doors {
+        fold(door.start.x as f64, door.start.y as f64);
+        fold(door.end.x as f64, door.end.y as f64);
     }
 
     Some((min_x, min_y, max_x, max_y))
@@ -349,7 +360,7 @@ enum DragPreview {
 
 /// The active editing tool. `Select` is the default/neutral tool (click to
 /// select, drag to move/pan); other variants arm a placement/drawing
-/// interaction. More variants (`PlaceDoor`) may join this enum in later PRs.
+/// interaction.
 #[derive(Clone, PartialEq, Default)]
 enum Tool {
     #[default]
@@ -359,6 +370,9 @@ enum Tool {
     /// Drawing a wall path. `vertices` accumulates world-space points as the
     /// user clicks; nothing is committed to the map until the path finishes.
     DrawWall { vertices: Vec<Point> },
+    /// Placing a door: `start` is `None` until the first of two clicks, then
+    /// `Some(point)` awaiting the second click to complete it.
+    PlaceDoor { start: Option<Point> },
 }
 
 /// What's currently selected in edit mode, for the contextual inspector.
@@ -415,6 +429,7 @@ pub fn MapView() -> Element {
         close_wall,
         recolor_wall,
         remove_wall,
+        place_door,
         undo,
         redo,
         can_undo,
@@ -496,18 +511,27 @@ pub fn MapView() -> Element {
         std::rc::Rc::new((observer, callback))
     });
 
-    // Escape cancels an in-progress wall draft (no commit — same free-cancel
-    // semantics as switching back to Select). Listened for at the document
-    // level, same shape as the `ResizeObserver` hook above: the closure and
-    // listener registration are kept alive together in component state for
-    // the component's lifetime.
+    // Escape cancels an in-progress wall draft or door placement (no commit —
+    // same free-cancel semantics as switching back to Select). Door placement
+    // gets a two-stage cancel: the first Escape backs out of the pending
+    // second click (dropping the placed start point but staying in the tool),
+    // and a second Escape then fully exits to Select — smoother than losing
+    // the whole in-progress placement on one keypress. Listened for at the
+    // document level, same shape as the `ResizeObserver` hook above: the
+    // closure and listener registration are kept alive together in component
+    // state for the component's lifetime.
     let _keydown_listener = use_hook(|| {
         let callback = Closure::<dyn FnMut(web_sys::Event)>::new(move |evt: web_sys::Event| {
             if let Ok(evt) = evt.dyn_into::<web_sys::KeyboardEvent>()
                 && evt.key() == "Escape"
-                && matches!(*tool.read(), Tool::DrawWall { .. })
             {
-                tool.set(Tool::Select);
+                let current = tool.read().clone();
+                match current {
+                    Tool::DrawWall { .. } => tool.set(Tool::Select),
+                    Tool::PlaceDoor { start: Some(_) } => tool.set(Tool::PlaceDoor { start: None }),
+                    Tool::PlaceDoor { start: None } => tool.set(Tool::Select),
+                    _ => {}
+                }
             }
         });
 
@@ -524,14 +548,15 @@ pub fn MapView() -> Element {
 
     let placed = map.as_ref().map(|m| m.cameras.clone()).unwrap_or_default();
     let placed_walls = map.as_ref().map(|m| m.walls.clone()).unwrap_or_default();
+    let placed_doors = map.as_ref().map(|m| m.doors.clone()).unwrap_or_default();
     // A second copy for `onpointerup`'s `MoveWallVertex` commit: `onpointermove`
     // (below) also needs the un-previewed wall list (to seed a vertex drag's
     // base position) and captures its copy by move, same as `placed` already
     // does for `MoveCamera`.
     let placed_walls_on_release = placed_walls.clone();
 
-    // Fit and center the placed cameras and walls exactly once, after layout
-    // has settled.
+    // Fit and center the placed cameras, walls, and doors exactly once, after
+    // layout has settled.
     //
     // On a hard / deep-link load the map data can arrive before the first styled
     // layout settles, so measuring synchronously here would fit against a
@@ -541,12 +566,14 @@ pub fn MapView() -> Element {
     // one to be safe), so the fit always uses the settled size. `fitted` still
     // locks it to a single fit (now the correct one) and never fights later user
     // pan/zoom; an empty map keeps the default viewport. `use_reactive` re-runs
-    // this when the cameras or walls change (map load); guard reads use `peek`
-    // so the effect depends only on `placed`/`placed_walls`.
+    // this when the cameras, walls, or doors change (map load); guard reads use
+    // `peek` so the effect depends only on `placed`/`placed_walls`/`placed_doors`.
     use_effect(use_reactive(
-        (&placed, &placed_walls),
-        move |(placed, placed_walls)| {
-            if *fitted.peek() || (placed.is_empty() && placed_walls.is_empty()) {
+        (&placed, &placed_walls, &placed_doors),
+        move |(placed, placed_walls, placed_doors)| {
+            if *fitted.peek()
+                || (placed.is_empty() && placed_walls.is_empty() && placed_doors.is_empty())
+            {
                 return;
             }
             after_next_layout(move || {
@@ -556,7 +583,7 @@ pub fn MapView() -> Element {
                 if width > 0.0
                     && height > 0.0
                     && !*fitted.peek()
-                    && let Some(bounds) = content_bounds(&placed, &placed_walls)
+                    && let Some(bounds) = content_bounds(&placed, &placed_walls, &placed_doors)
                 {
                     viewport.set(Viewport::fit_to_content(bounds, width, height));
                     fitted.set(true);
@@ -626,6 +653,11 @@ pub fn MapView() -> Element {
         })
         .collect();
 
+    // Doors aren't editable yet in this PR, so no preview overlay is needed —
+    // just the placed list as-is, same as `display_walls` was in PR5 before
+    // PR6 added drag-preview support.
+    let display_doors: Vec<MapDoor> = placed_doors.clone();
+
     let transform = viewport.read().transform();
     let selected_camera_id = selection.read().clone().and_then(|s| match s {
         Selection::Camera(id) => Some(id),
@@ -636,7 +668,7 @@ pub fn MapView() -> Element {
         _ => None,
     });
     let is_editing = *editing.read();
-    let is_placing = matches!(*tool.read(), Tool::PlaceCamera(_));
+    let is_placing = matches!(*tool.read(), Tool::PlaceCamera(_) | Tool::PlaceDoor { .. });
     let is_drawing_wall = matches!(*tool.read(), Tool::DrawWall { .. });
     let gesture_label = gesture.read().label();
 
@@ -688,7 +720,7 @@ pub fn MapView() -> Element {
     // content, so there is nothing off-screen to navigate to).
     let (canvas_w, canvas_h) = *canvas_size.read();
     let minimap_data = if canvas_w > 0.0 && canvas_h > 0.0 {
-        content_bounds(&display_cameras, &display_walls).and_then(|content| {
+        content_bounds(&display_cameras, &display_walls, &display_doors).and_then(|content| {
             let vp = *viewport.read();
             let (vmin_x, vmin_y) = vp.screen_to_world(0.0, 0.0);
             let (vmax_x, vmax_y) = vp.screen_to_world(canvas_w, canvas_h);
@@ -710,7 +742,7 @@ pub fn MapView() -> Element {
     let zoom_percent = {
         let zoom = viewport.read().zoom;
         let fit_zoom = if canvas_w > 0.0 && canvas_h > 0.0 {
-            content_bounds(&display_cameras, &display_walls)
+            content_bounds(&display_cameras, &display_walls, &display_doors)
                 .map(|bounds| Viewport::fit_to_content(bounds, canvas_w, canvas_h).zoom)
         } else {
             None
@@ -845,6 +877,34 @@ pub fn MapView() -> Element {
 
                         vertices.push(world_point);
                         tool.set(Tool::DrawWall { vertices });
+                        return;
+                    }
+                    if let Tool::PlaceDoor { start } = pending {
+                        let (wx, wy) = viewport.read().screen_to_world(cx, cy);
+                        let world_point = Point { x: wx.round() as i32, y: wy.round() as i32 };
+                        match start {
+                            None => {
+                                tool.set(Tool::PlaceDoor { start: Some(world_point) });
+                            }
+                            Some(start_point) => {
+                                // A door is always exactly two points, so the
+                                // second click both finishes AND commits in one
+                                // step — unlike wall drafting there is no
+                                // separate "finish" affordance. The newly
+                                // placed door is deliberately NOT selected:
+                                // `Selection::Door` doesn't exist yet (that's a
+                                // later PR), mirroring how PR5 left newly-drawn
+                                // walls unselected before PR6 added
+                                // `Selection::Wall`.
+                                place_door(MapDoor {
+                                    id: uuid::Uuid::new_v4().to_string(),
+                                    start: start_point,
+                                    end: world_point,
+                                    swing: DoorSwing::default(),
+                                });
+                                tool.set(Tool::Select);
+                            }
+                        }
                         return;
                     }
                     if is_editing {
@@ -1208,6 +1268,34 @@ pub fn MapView() -> Element {
                         }
                     }
 
+                    for door in display_doors.iter().cloned() {
+                        MapDoorMarker { key: "{door.id}", door }
+                    }
+
+                    // --- In-progress door placement preview ---
+                    // A rubber-band line from the already-placed start point to
+                    // the live cursor position while the second click is still
+                    // pending, same technique the wall draft's rubber-band
+                    // uses. Reuses `.map-wall-draft__rubber-band` directly
+                    // (same visual language: "a tentative, not-yet-committed
+                    // line") rather than a near-duplicate class.
+                    if let Tool::PlaceDoor { start: Some(point) } = &*tool.read()
+                        && let Some((cx, cy)) = *cursor_pos.read()
+                    {
+                        {
+                            let (wx, wy) = viewport.read().screen_to_world(cx, cy);
+                            rsx! {
+                                line {
+                                    class: "map-wall-draft__rubber-band",
+                                    x1: "{point.x}",
+                                    y1: "{point.y}",
+                                    x2: "{wx}",
+                                    y2: "{wy}",
+                                }
+                            }
+                        }
+                    }
+
                     // --- In-progress wall draft ---
                     // Rendered here (inside the world-space group) so it pans
                     // and zooms with everything else. No selection/editing of
@@ -1384,6 +1472,11 @@ pub fn MapView() -> Element {
                             }
                             tool.set(Tool::Select);
                         },
+                        door_active: matches!(*tool.read(), Tool::PlaceDoor { .. }),
+                        on_place_door: move |_| {
+                            tool.set(Tool::PlaceDoor { start: None });
+                            picker_open.set(false);
+                        },
                     }
                 }
             }
@@ -1456,7 +1549,7 @@ pub fn MapView() -> Element {
                 },
                 on_reset_zoom: move |_| {
                     let (cw, ch) = *canvas_size.read();
-                    if let Some(bounds) = content_bounds(&display_cameras, &display_walls) {
+                    if let Some(bounds) = content_bounds(&display_cameras, &display_walls, &display_doors) {
                         viewport.set(Viewport::fit_to_content(bounds, cw, ch));
                     }
                 },

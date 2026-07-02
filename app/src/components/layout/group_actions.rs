@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 use dioxus_free_icons::Icon;
-use dioxus_free_icons::icons::fi_icons::{FiVideo, FiVideoOff};
+use dioxus_free_icons::icons::ld_icons::{LdVideo, LdVideoOff};
 
 use crate::components::ui::{ButtonColor, IconButton};
 
@@ -10,7 +10,7 @@ pub fn GroupActions(on_toggle_record_on: Callback, on_toggle_record_off: Callbac
         div { class: "group-actions",
             IconButton {
                 icon: rsx! {
-                    Icon { width: 24, height: 24, icon: FiVideo }
+                    Icon { width: 24, height: 24, icon: LdVideo }
                 },
                 color: ButtonColor::Danger,
                 on_press: on_toggle_record_on,
@@ -18,7 +18,7 @@ pub fn GroupActions(on_toggle_record_on: Callback, on_toggle_record_off: Callbac
 
             IconButton {
                 icon: rsx! {
-                    Icon { width: 24, height: 24, icon: FiVideoOff }
+                    Icon { width: 24, height: 24, icon: LdVideoOff }
                 },
                 on_press: on_toggle_record_off,
             }

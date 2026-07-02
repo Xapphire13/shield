@@ -47,9 +47,11 @@ pub fn MapWallPath(
                 d: "{d}",
                 fill: "none",
                 onpointerdown: move |evt: Event<PointerData>| {
-                    evt.stop_propagation();
-                    if let Some(cb) = on_path_pointer_down {
-                        cb.call(evt);
+                    if editing {
+                        evt.stop_propagation();
+                        if let Some(cb) = on_path_pointer_down {
+                            cb.call(evt);
+                        }
                     }
                 },
             }

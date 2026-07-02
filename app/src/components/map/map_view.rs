@@ -347,6 +347,7 @@ pub fn MapView() -> Element {
         redo,
         can_undo,
         can_redo,
+        ..
     } = use_map(DEFAULT_MAP_ID.to_string());
 
     let UseCamerasResult {

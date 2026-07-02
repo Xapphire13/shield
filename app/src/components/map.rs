@@ -1,5 +1,6 @@
 pub mod camera_info;
 pub mod camera_inspector;
+pub mod color_swatch_picker;
 pub mod edit_toolbar;
 pub mod map_camera;
 pub mod map_view;

@@ -36,6 +36,16 @@
     --color-warning: #f5a623;
     --color-recording: red;
 
+    /* Curated wall/fence color palette (not arbitrary hex input) — lets the
+       user visually distinguish wall types (e.g. exterior vs. interior vs.
+       fence) from a small fixed set. */
+    --wall-color-slate: #7c8aa5;
+    --wall-color-clay: #c08552;
+    --wall-color-moss: #6fae5c;
+    --wall-color-amber: #e0a730;
+    --wall-color-sky: #58b8d9;
+    --wall-color-rose: #c95a7a;
+
     /* Overlays and shadows. */
     --color-overlay: rgba(0, 0, 0, 0.5);
     --color-shadow: rgba(0, 0, 0, 0.45);
@@ -531,14 +541,20 @@ ul {
     cursor: crosshair;
 }
 
-/* A placed wall/fence. Placeholder stroke color pending the real WallColor
-   palette (a later PR). `pointer-events: stroke` widens the clickable area to
-   the full rendered stroke width (an SVG path with fill:none otherwise only
-   registers pointer events exactly on the infinitely-thin center line),
-   which combined with the existing stroke-width makes it comfortably
-   clickable without needing a separate invisible hit-target layer. */
+/* A placed wall/fence. Stroke color comes from the wall's chosen WallColor,
+   fed in as the `--wall-stroke-color` custom property via an inline `style`
+   on the `<path>` (see `map_wall.rs`) — deliberately not an inline `stroke`,
+   since an inline style would beat the `[data-selected="true"]` rule below
+   regardless of specificity and permanently mask the selection highlight.
+   `--color-border-strong` is a fallback for the (currently unreachable) case
+   where the custom property is unset. `pointer-events: stroke` widens the
+   clickable area to the full rendered stroke width (an SVG path with
+   fill:none otherwise only registers pointer events exactly on the
+   infinitely-thin center line), which combined with the existing
+   stroke-width makes it comfortably clickable without needing a separate
+   invisible hit-target layer. */
 .map-wall__stroke {
-    stroke: var(--color-border-strong);
+    stroke: var(--wall-stroke-color, var(--color-border-strong));
     stroke-width: 6;
     stroke-linecap: round;
     stroke-linejoin: round;
@@ -871,8 +887,8 @@ ul {
 }
 
 /* Inspector sheet for the selected wall: same bottom-sheet container styling
-   as `.camera-inspector`, simplified (no sliders yet — recoloring lands in a
-   later PR). */
+   as `.camera-inspector`, simplified (no sliders — vertex editing happens via
+   on-canvas handles, not this sheet). */
 .wall-inspector {
     position: fixed;
     left: 0;
@@ -919,6 +935,50 @@ ul {
     .wall-inspector__close-loop:hover {
         background-color: var(--color-surface-highlight);
     }
+}
+
+/* Row of curated color swatches in the wall inspector. */
+.color-swatch-picker {
+    display: flex;
+    gap: 8px;
+    padding: 8px 0;
+}
+
+.color-swatch-picker__swatch {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    padding: 0;
+}
+
+.color-swatch-picker__swatch[data-color="slate"] {
+    background: var(--wall-color-slate);
+}
+
+.color-swatch-picker__swatch[data-color="clay"] {
+    background: var(--wall-color-clay);
+}
+
+.color-swatch-picker__swatch[data-color="moss"] {
+    background: var(--wall-color-moss);
+}
+
+.color-swatch-picker__swatch[data-color="amber"] {
+    background: var(--wall-color-amber);
+}
+
+.color-swatch-picker__swatch[data-color="sky"] {
+    background: var(--wall-color-sky);
+}
+
+.color-swatch-picker__swatch[data-color="rose"] {
+    background: var(--wall-color-rose);
+}
+
+.color-swatch-picker__swatch[data-selected="true"] {
+    border-color: var(--color-text);
 }
 
 /* Read-only info popover for a camera shown on the map in view mode, anchored

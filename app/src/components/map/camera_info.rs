@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 use dioxus_free_icons::Icon;
-use dioxus_free_icons::icons::fi_icons::FiX;
+use dioxus_free_icons::icons::ld_icons::LdX;
 use shield_models::Camera;
 
 use crate::components::ui::{ButtonColor, IconButton};
@@ -106,7 +106,7 @@ pub fn CameraInfo(
                 if pinned {
                     IconButton {
                         icon: rsx! {
-                            Icon { width: 18, height: 18, icon: FiX }
+                            Icon { width: 18, height: 18, icon: LdX }
                         },
                         color: ButtonColor::Default,
                         on_press: move |_| on_close(()),

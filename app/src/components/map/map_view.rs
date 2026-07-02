@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 use dioxus_free_icons::Icon;
-use dioxus_free_icons::icons::fi_icons::{FiCornerUpLeft, FiCornerUpRight};
+use dioxus_free_icons::icons::ld_icons::{LdCornerUpLeft, LdCornerUpRight};
 use shield_models::{FieldOfView, MapCamera, Point};
 use wasm_bindgen::JsCast;
 use wasm_bindgen::closure::Closure;
@@ -590,13 +590,13 @@ pub fn MapView() -> Element {
                             class: "map-topbar__icon",
                             disabled: !can_undo,
                             onclick: move |_| undo(()),
-                            Icon { width: 18, height: 18, icon: FiCornerUpLeft }
+                            Icon { width: 18, height: 18, icon: LdCornerUpLeft }
                         }
                         button {
                             class: "map-topbar__icon",
                             disabled: !can_redo,
                             onclick: move |_| redo(()),
-                            Icon { width: 18, height: 18, icon: FiCornerUpRight }
+                            Icon { width: 18, height: 18, icon: LdCornerUpRight }
                         }
                     }
                 },

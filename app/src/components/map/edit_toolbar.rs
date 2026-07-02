@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 use dioxus_free_icons::Icon;
-use dioxus_free_icons::icons::fi_icons::{FiPlus, FiX};
+use dioxus_free_icons::icons::ld_icons::{LdPlus, LdX};
 use shield_models::Camera;
 
 /// Bottom tool strip shown while editing the map. It is positioned in the same
@@ -16,7 +16,7 @@ pub fn EditToolbar(on_add: Callback) -> Element {
             button {
                 class: "edit-toolbar__tool",
                 onclick: move |_| on_add(()),
-                Icon { width: 20, height: 20, icon: FiPlus }
+                Icon { width: 20, height: 20, icon: LdPlus }
                 span { "Add camera" }
             }
         }
@@ -42,7 +42,7 @@ pub fn CameraPicker(
                 button {
                     class: "camera-picker__close",
                     onclick: move |_| on_close(()),
-                    Icon { width: 20, height: 20, icon: FiX }
+                    Icon { width: 20, height: 20, icon: LdX }
                 }
             }
 

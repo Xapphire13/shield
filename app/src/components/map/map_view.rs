@@ -414,6 +414,20 @@ fn bearing_to(cx: f64, cy: f64, wx: f64, wy: f64) -> u16 {
     bearing.round() as u16
 }
 
+/// Applies a zoom-scaled screen-pixel drag delta (`(last_x, last_y)` -> `(cx,
+/// cy)`) to a world-space `base` point, rounding to the nearest whole
+/// centimeter. Shared by every per-element drag gesture (camera move, wall
+/// vertex, door endpoint) since the underlying screen-to-world delta math is
+/// identical regardless of what's being dragged.
+fn apply_drag_delta(base: Point, cx: f64, cy: f64, last_x: f64, last_y: f64, zoom: f64) -> Point {
+    let dx = (cx - last_x) / zoom;
+    let dy = (cy - last_y) / zoom;
+    Point {
+        x: base.x + dx.round() as i32,
+        y: base.y + dy.round() as i32,
+    }
+}
+
 /// Convert a pointer event to canvas-relative pixels using a cached canvas
 /// origin (the canvas's viewport-relative top-left).
 ///
@@ -974,8 +988,6 @@ pub fn MapView() -> Element {
                         }
                         Gesture::MoveCamera { camera_id, last_x, last_y } => {
                             let zoom = viewport.read().zoom;
-                            let dx = (cx - last_x) / zoom;
-                            let dy = (cy - last_y) / zoom;
                             let base = drag_preview
                                 .read()
                                 .position_for(&camera_id)
@@ -986,10 +998,7 @@ pub fn MapView() -> Element {
                                         .map(|c| c.position.clone())
                                 });
                             if let Some(base) = base {
-                                let position = Point {
-                                    x: base.x + dx.round() as i32,
-                                    y: base.y + dy.round() as i32,
-                                };
+                                let position = apply_drag_delta(base, cx, cy, last_x, last_y, zoom);
                                 drag_preview
                                     .set(DragPreview::Position {
                                         camera_id: camera_id.clone(),
@@ -1038,8 +1047,6 @@ pub fn MapView() -> Element {
                         }
                         Gesture::MoveWallVertex { wall_id, vertex_index, last_x, last_y } => {
                             let zoom = viewport.read().zoom;
-                            let dx = (cx - last_x) / zoom;
-                            let dy = (cy - last_y) / zoom;
                             let base = drag_preview
                                 .read()
                                 .wall_vertex_for(&wall_id, vertex_index)
@@ -1050,10 +1057,7 @@ pub fn MapView() -> Element {
                                         .and_then(|w| w.vertices.get(vertex_index).cloned())
                                 });
                             if let Some(base) = base {
-                                let position = Point {
-                                    x: base.x + dx.round() as i32,
-                                    y: base.y + dy.round() as i32,
-                                };
+                                let position = apply_drag_delta(base, cx, cy, last_x, last_y, zoom);
                                 drag_preview
                                     .set(DragPreview::WallVertex {
                                         wall_id: wall_id.clone(),
@@ -1071,8 +1075,6 @@ pub fn MapView() -> Element {
                         }
                         Gesture::MoveDoorEndpoint { door_id, which, last_x, last_y } => {
                             let zoom = viewport.read().zoom;
-                            let dx = (cx - last_x) / zoom;
-                            let dy = (cy - last_y) / zoom;
                             let base = drag_preview
                                 .read()
                                 .door_endpoint_for(&door_id, which)
@@ -1086,10 +1088,7 @@ pub fn MapView() -> Element {
                                         })
                                 });
                             if let Some(base) = base {
-                                let position = Point {
-                                    x: base.x + dx.round() as i32,
-                                    y: base.y + dy.round() as i32,
-                                };
+                                let position = apply_drag_delta(base, cx, cy, last_x, last_y, zoom);
                                 drag_preview
                                     .set(DragPreview::DoorEndpoint {
                                         door_id: door_id.clone(),

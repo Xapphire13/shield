@@ -61,9 +61,11 @@ pub fn MapDoorMarker(
                 x2: "{door.end.x}",
                 y2: "{door.end.y}",
                 onpointerdown: move |evt: Event<PointerData>| {
-                    evt.stop_propagation();
-                    if let Some(cb) = on_body_pointer_down {
-                        cb.call(evt);
+                    if editing {
+                        evt.stop_propagation();
+                        if let Some(cb) = on_body_pointer_down {
+                            cb.call(evt);
+                        }
                     }
                 },
             }

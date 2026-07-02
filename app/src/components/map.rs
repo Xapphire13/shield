@@ -3,6 +3,7 @@ pub mod camera_inspector;
 pub mod color_swatch_picker;
 pub mod edit_toolbar;
 pub mod map_camera;
+pub mod map_door;
 pub mod map_view;
 pub mod map_wall;
 pub mod minimap;

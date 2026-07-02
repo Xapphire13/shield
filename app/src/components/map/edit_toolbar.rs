@@ -1,6 +1,8 @@
 use dioxus::prelude::*;
 use dioxus_free_icons::Icon;
-use dioxus_free_icons::icons::ld_icons::{LdBrickWall, LdCheck, LdMousePointer, LdVideo, LdX};
+use dioxus_free_icons::icons::ld_icons::{
+    LdBrickWall, LdCheck, LdDoorOpen, LdMousePointer, LdVideo, LdX,
+};
 use shield_models::Camera;
 
 use crate::components::map::map_view::Tool;
@@ -10,11 +12,11 @@ use crate::components::map::map_view::Tool;
 /// replacing it for the duration of edit mode.
 ///
 /// Icon-only buttons (a `title` gives a hover tooltip / accessible name, but no
-/// visible text label — this strip is expected to grow more tools, like
-/// place-door, in later PRs, and labels would not fit). Takes the host's
-/// `Tool` directly (rather than one bool per tool) so each new tool button
-/// just matches a new variant instead of the caller needing to pre-compute
-/// and wire up another boolean.
+/// visible text label — this strip is expected to grow more tools in later
+/// PRs, and labels would not fit). Takes the host's `Tool` directly (rather
+/// than one bool per tool) so each new tool button just matches a new
+/// variant instead of the caller needing to pre-compute and wire up another
+/// boolean.
 #[component]
 pub fn EditToolbar(
     /// The currently active tool; each button's active state is derived from
@@ -34,11 +36,14 @@ pub fn EditToolbar(
     on_draw_wall: Callback,
     /// Finish the in-progress wall draft as an open path.
     on_finish_wall: Callback,
+    /// Arm the Place-Door tool.
+    on_place_door: Callback,
 ) -> Element {
     let camera_active = camera_picker_open || matches!(active_tool, Tool::PlaceCamera(_));
     let wall_active = matches!(active_tool, Tool::DrawWall { .. });
     let can_finish_wall =
         matches!(&active_tool, Tool::DrawWall { vertices } if vertices.len() >= 2);
+    let door_active = matches!(active_tool, Tool::PlaceDoor { .. });
     rsx! {
         div { class: "edit-toolbar",
             button {
@@ -61,6 +66,13 @@ pub fn EditToolbar(
                 title: "Draw wall",
                 onclick: move |_| on_draw_wall(()),
                 Icon { width: 20, height: 20, icon: LdBrickWall }
+            }
+            button {
+                class: "edit-toolbar__tool",
+                "data-active": door_active,
+                title: "Place door",
+                onclick: move |_| on_place_door(()),
+                Icon { width: 20, height: 20, icon: LdDoorOpen }
             }
             if can_finish_wall {
                 button {

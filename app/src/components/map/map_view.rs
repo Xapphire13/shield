@@ -302,6 +302,25 @@ enum DragPreview {
     Fov { camera_id: String, fov: FieldOfView },
 }
 
+/// The active editing tool. `Select` is the default/neutral tool (click to
+/// select, drag to move/pan); other variants arm a placement/drawing
+/// interaction. More variants (`DrawWall`, `PlaceDoor`) join this enum in
+/// later PRs — kept minimal here to only what camera placement needs today.
+#[derive(Clone, PartialEq, Default)]
+enum Tool {
+    #[default]
+    Select,
+    /// A camera id chosen from the picker, awaiting a placement tap.
+    PlaceCamera(String),
+}
+
+/// What's currently selected in edit mode, for the contextual inspector.
+/// More variants (`Wall`, `Door`) join this enum in later PRs.
+#[derive(Clone, PartialEq)]
+enum Selection {
+    Camera(String),
+}
+
 /// Euclidean distance between two points.
 fn distance(ax: f64, ay: f64, bx: f64, by: f64) -> f64 {
     ((ax - bx).powi(2) + (ay - by).powi(2)).sqrt()
@@ -360,7 +379,7 @@ pub fn MapView() -> Element {
     let mut drag_preview = use_signal(|| DragPreview::None);
 
     let mut editing = use_signal(|| false);
-    let mut selection = use_signal(|| None::<String>);
+    let mut selection = use_signal(|| None::<Selection>);
     // The placed camera whose read-only info popover is pinned in view mode, by
     // placed-reference id. Set by a tap/click and only used outside edit mode
     // (edit mode owns taps via the selection flow).
@@ -369,9 +388,12 @@ pub fn MapView() -> Element {
     // only; gated in CSS via `@media (hover: hover)`). Transient: cleared on
     // mouse-leave. A pinned (tapped) camera takes precedence over this.
     let mut hovered_camera_id = use_signal(|| None::<String>);
-    // The camera id chosen in the picker and awaiting a placement tap.
-    let mut placing = use_signal(|| None::<String>);
+    // The active editing tool (Select, or a placement tool awaiting a canvas tap).
+    let mut tool = use_signal(Tool::default);
     let mut picker_open = use_signal(|| false);
+    // The pointer's canvas-relative screen position, tracked while any
+    // placement tool is active so the coordinate readout can follow it.
+    let mut cursor_pos = use_signal(|| None::<(f64, f64)>);
 
     // Cached canvas geometry from the frame's bounding rect: the viewport-relative
     // top-left (origin) drives canvas-relative pointer math (see `canvas_xy`), and
@@ -494,13 +516,13 @@ pub fn MapView() -> Element {
         .collect();
 
     let transform = viewport.read().transform();
-    let selected_id = selection.read().clone();
+    let selected_camera_id = selection.read().clone().map(|Selection::Camera(id)| id);
     let is_editing = *editing.read();
-    let is_placing = placing.read().is_some();
+    let is_placing = matches!(*tool.read(), Tool::PlaceCamera(_));
     let gesture_label = gesture.read().label();
 
     // The currently selected camera (after preview), for the inspector.
-    let selected_camera = selected_id
+    let selected_camera = selected_camera_id
         .as_ref()
         .and_then(|id| display_cameras.iter().find(|c| &c.camera_id == id).cloned());
 
@@ -611,7 +633,7 @@ pub fn MapView() -> Element {
                                 info_camera_id.set(None);
                             } else {
                                 selection.set(None);
-                                placing.set(None);
+                                tool.set(Tool::Select);
                                 picker_open.set(false);
                             }
                         },
@@ -660,16 +682,16 @@ pub fn MapView() -> Element {
                 // mode with nothing under it, it deselects.
                 onpointerdown: move |evt| {
                     let (cx, cy) = canvas_xy(&evt.data(), *canvas_origin.read());
-                    let pending = placing.read().clone();
-                    if let Some(camera_id) = pending {
+                    let pending = tool.read().clone();
+                    if let Tool::PlaceCamera(camera_id) = pending {
                         let (wx, wy) = viewport.read().screen_to_world(cx, cy);
                         place_camera(MapCamera {
                             camera_id: camera_id.clone(),
                             position: Point { x: wx.round() as i32, y: wy.round() as i32 },
                             fov: DEFAULT_FOV,
                         });
-                        placing.set(None);
-                        selection.set(Some(camera_id));
+                        tool.set(Tool::Select);
+                        selection.set(Some(Selection::Camera(camera_id)));
                         return;
                     }
                     if is_editing {
@@ -684,6 +706,7 @@ pub fn MapView() -> Element {
                 },
                 onpointermove: move |evt| {
                     let (cx, cy) = canvas_xy(&evt.data(), *canvas_origin.read());
+                    cursor_pos.set(Some((cx, cy)));
                     let current = gesture.read().clone();
                     match current {
                         Gesture::Pan { last_x, last_y } => {
@@ -780,6 +803,9 @@ pub fn MapView() -> Element {
                     drag_preview.set(DragPreview::None);
                     gesture.set(Gesture::None);
                 },
+                onpointerleave: move |_| {
+                    cursor_pos.set(None);
+                },
 
                 // --- Touch pinch zoom ---
                 ontouchstart: move |evt| {
@@ -841,7 +867,7 @@ pub fn MapView() -> Element {
                         {
                             let id = camera.camera_id.clone();
                             let orphaned = name_for(&id).is_none();
-                            let is_selected = selected_id.as_deref() == Some(id.as_str());
+                            let is_selected = selected_camera_id.as_deref() == Some(id.as_str());
                             rsx! {
                                 MapCameraMarker {
                                     key: "{id}",
@@ -852,7 +878,7 @@ pub fn MapView() -> Element {
                                     on_body_pointer_down: {
                                         let id = id.clone();
                                         move |evt: Event<PointerData>| {
-                                            selection.set(Some(id.clone()));
+                                            selection.set(Some(Selection::Camera(id.clone())));
                                             let (cx, cy) = canvas_xy(&evt.data(), *canvas_origin.read());
                                             gesture
                                                 .set(Gesture::MoveCamera {
@@ -913,6 +939,25 @@ pub fn MapView() -> Element {
                     }
                     }
                 }
+
+                // --- Coordinate readout (any placement tool) ---
+                // Follows the pointer, offset slightly so the label doesn't sit
+                // directly under the cursor/finger. Hidden whenever the Select
+                // tool is active or the pointer is outside the canvas.
+                if !matches!(*tool.read(), Tool::Select)
+                    && let Some((cx, cy)) = *cursor_pos.read()
+                {
+                    {
+                        let (wx, wy) = viewport.read().screen_to_world(cx, cy);
+                        rsx! {
+                            div {
+                                class: "map-coord-readout",
+                                style: "left: {cx + 14.0}px; top: {cy + 14.0}px;",
+                                "{wx.round() as i32}, {wy.round() as i32} cm",
+                            }
+                        }
+                    }
+                }
             }
 
             // --- Bottom chrome (edit mode only) ---
@@ -955,8 +1000,14 @@ pub fn MapView() -> Element {
                     }
                 } else {
                     EditToolbar {
-                        on_add: move |_| {
-                            placing.set(None);
+                        select_active: matches!(*tool.read(), Tool::Select),
+                        camera_active: *picker_open.read() || matches!(*tool.read(), Tool::PlaceCamera(_)),
+                        on_select: move |_| {
+                            tool.set(Tool::Select);
+                            picker_open.set(false);
+                        },
+                        on_add_camera: move |_| {
+                            tool.set(Tool::Select);
                             picker_open.set(true);
                         },
                     }
@@ -1042,7 +1093,7 @@ pub fn MapView() -> Element {
                 CameraPicker {
                     cameras: unplaced.clone(),
                     on_pick: move |id: String| {
-                        placing.set(Some(id));
+                        tool.set(Tool::PlaceCamera(id));
                         picker_open.set(false);
                     },
                     on_close: move |_| picker_open.set(false),

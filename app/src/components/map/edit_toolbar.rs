@@ -1,6 +1,8 @@
 use dioxus::prelude::*;
 use dioxus_free_icons::Icon;
-use dioxus_free_icons::icons::ld_icons::{LdCheck, LdMinus, LdMousePointer, LdVideo, LdX};
+use dioxus_free_icons::icons::ld_icons::{
+    LdCheck, LdDoorOpen, LdMinus, LdMousePointer, LdVideo, LdX,
+};
 use shield_models::Camera;
 
 /// Bottom tool strip shown while editing the map. It is positioned in the same
@@ -8,11 +10,10 @@ use shield_models::Camera;
 /// replacing it for the duration of edit mode.
 ///
 /// Icon-only buttons (a `title` gives a hover tooltip / accessible name, but no
-/// visible text label — this strip is expected to grow more tools, like
-/// draw-wall and place-door, in later PRs, and labels would not fit). The host
-/// (`MapView`) owns which tool is active, tracked as a private enum there; this
-/// component only sees plain booleans/callbacks, so it stays decoupled from
-/// that internal shape.
+/// visible text label — this strip is expected to grow more tools in later
+/// PRs, and labels would not fit). The host (`MapView`) owns which tool is
+/// active, tracked as a private enum there; this component only sees plain
+/// booleans/callbacks, so it stays decoupled from that internal shape.
 #[component]
 pub fn EditToolbar(
     /// Whether the Select tool is currently active (the neutral default).
@@ -35,6 +36,11 @@ pub fn EditToolbar(
     can_finish_wall: bool,
     /// Finish the in-progress wall draft as an open path.
     on_finish_wall: Callback,
+    /// Whether Place-Door is currently active (awaiting the first or second
+    /// of its two placement clicks).
+    door_active: bool,
+    /// Arm the Place-Door tool.
+    on_place_door: Callback,
 ) -> Element {
     rsx! {
         div { class: "edit-toolbar",
@@ -58,6 +64,13 @@ pub fn EditToolbar(
                 title: "Draw wall",
                 onclick: move |_| on_draw_wall(()),
                 Icon { width: 20, height: 20, icon: LdMinus }
+            }
+            button {
+                class: "edit-toolbar__tool",
+                "data-active": door_active,
+                title: "Place door",
+                onclick: move |_| on_place_door(()),
+                Icon { width: 20, height: 20, icon: LdDoorOpen }
             }
             if can_finish_wall {
                 button {

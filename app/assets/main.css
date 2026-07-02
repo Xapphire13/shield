@@ -623,12 +623,18 @@ ul {
 
 /* Placed door: a freestanding gap/marker, not a solid boundary — styled
    noticeably lighter/thinner than `.map-wall__stroke` (stroke-width 6) so it
-   reads as an opening rather than a wall. No selection/editing yet (create-
-   only in this PR), so there is no `[data-selected]` variant here. */
+   reads as an opening rather than a wall. Selectable via a pointer-down on
+   the opening line; `pointer-events: stroke` widens the hit area to the full
+   dashed stroke width, same rationale as `.map-wall__stroke`. */
 .map-door__opening {
     stroke: var(--color-text-muted);
     stroke-width: 3;
     stroke-dasharray: 8 6;
+    pointer-events: stroke;
+}
+
+.map-door[data-editing="true"] .map-door__opening {
+    cursor: pointer;
 }
 
 .map-door__leaf {
@@ -640,6 +646,33 @@ ul {
     stroke: var(--color-text-muted);
     stroke-width: 2;
     stroke-dasharray: 4 4;
+}
+
+/* Selected door: emphasize all three strokes, same treatment as a selected
+   wall's stroke. */
+.map-door[data-selected="true"] .map-door__opening {
+    stroke: var(--color-accent);
+    stroke-width: 4;
+}
+
+.map-door[data-selected="true"] .map-door__leaf {
+    stroke: var(--color-accent);
+    stroke-width: 4;
+}
+
+.map-door[data-selected="true"] .map-door__swing-arc {
+    stroke: var(--color-accent);
+    stroke-width: 2.5;
+}
+
+/* On-canvas endpoint drag handles for the selected door, shown once selected
+   and editing. Same visual weight as `.map-wall__vertex-handle`. */
+.map-door__endpoint-handle {
+    fill: var(--color-surface);
+    stroke: var(--color-text);
+    stroke-width: 1.5px;
+    vector-effect: non-scaling-stroke;
+    cursor: move;
 }
 
 /* World-coordinate readout that follows the pointer while any placement tool
@@ -954,6 +987,57 @@ ul {
 
 @media (hover: hover) {
     .wall-inspector__close-loop:hover {
+        background-color: var(--color-surface-highlight);
+    }
+}
+
+/* Inspector sheet for the selected door: same bottom-sheet container styling
+   as `.wall-inspector` (endpoint editing happens via on-canvas handles, not
+   this sheet — it only exposes the swing-flip action and delete). */
+.door-inspector {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: calc(var(--z-bottom-toolbar) + 1);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    background-color: var(--color-surface);
+    border-top: 1px solid var(--color-border);
+    border-radius: 12px 12px 0 0;
+    box-shadow: 0 -8px 24px var(--color-shadow);
+    padding: 16px;
+}
+
+.door-inspector__header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.door-inspector__title {
+    flex: 1;
+    font-weight: bold;
+    font-size: 1.1rem;
+}
+
+.door-inspector__flip-swing {
+    display: block;
+    width: 100%;
+    text-align: center;
+    background: none;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    color: var(--color-text);
+    font-family: inherit;
+    font-size: 1rem;
+    padding: 10px 16px;
+    cursor: pointer;
+}
+
+@media (hover: hover) {
+    .door-inspector__flip-swing:hover {
         background-color: var(--color-surface-highlight);
     }
 }

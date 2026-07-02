@@ -1,20 +1,32 @@
 mod add_map_camera;
+mod add_map_door;
+mod add_map_wall;
 mod authenticate;
 mod delete_map_camera;
+mod delete_map_door;
+mod delete_map_wall;
 mod get_map;
 mod list_cameras;
 mod refresh;
 mod set_recording_mode;
 mod update_map_camera;
+mod update_map_door;
+mod update_map_wall;
 
 pub use add_map_camera::*;
+pub use add_map_door::*;
+pub use add_map_wall::*;
 pub use authenticate::*;
 pub use delete_map_camera::*;
+pub use delete_map_door::*;
+pub use delete_map_wall::*;
 pub use get_map::*;
 pub use list_cameras::*;
 pub use refresh::*;
 pub use set_recording_mode::*;
 pub use update_map_camera::*;
+pub use update_map_door::*;
+pub use update_map_wall::*;
 
 use anyhow::anyhow;
 use axum::{RequestPartsExt, extract::FromRequestParts, http::request::Parts};

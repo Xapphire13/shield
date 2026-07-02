@@ -3040,6 +3040,7 @@ dependencies = [
 name = "shield-models"
 version = "0.1.0"
 dependencies = [
+ "postcard",
  "serde",
 ]
 

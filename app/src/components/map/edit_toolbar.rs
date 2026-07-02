@@ -1,23 +1,46 @@
 use dioxus::prelude::*;
 use dioxus_free_icons::Icon;
-use dioxus_free_icons::icons::ld_icons::{LdPlus, LdX};
+use dioxus_free_icons::icons::ld_icons::{LdMousePointer, LdVideo, LdX};
 use shield_models::Camera;
 
 /// Bottom tool strip shown while editing the map. It is positioned in the same
 /// bottom zone as the global navigation toolbar and stacks above it, visually
 /// replacing it for the duration of edit mode.
 ///
-/// Its only tool in v1 is **Add camera**, which opens a picker of cameras not
-/// yet placed on the map.
+/// Icon-only buttons (a `title` gives a hover tooltip / accessible name, but no
+/// visible text label — this strip is expected to grow more tools, like
+/// draw-wall and place-door, in later PRs, and labels would not fit). The host
+/// (`MapView`) owns which tool is active, tracked as a private enum there; this
+/// component only sees plain booleans/callbacks, so it stays decoupled from
+/// that internal shape.
 #[component]
-pub fn EditToolbar(on_add: Callback) -> Element {
+pub fn EditToolbar(
+    /// Whether the Select tool is currently active (the neutral default).
+    select_active: bool,
+    /// Whether Place-Camera is armed (either the picker sheet is open, or a
+    /// specific camera has been chosen and is awaiting a placement tap).
+    camera_active: bool,
+    /// Switch to the Select tool (also used to cancel an in-progress camera
+    /// placement).
+    on_select: Callback,
+    /// Open the camera picker sheet (existing "Add camera" behavior).
+    on_add_camera: Callback,
+) -> Element {
     rsx! {
         div { class: "edit-toolbar",
             button {
                 class: "edit-toolbar__tool",
-                onclick: move |_| on_add(()),
-                Icon { width: 20, height: 20, icon: LdPlus }
-                span { "Add camera" }
+                "data-active": select_active,
+                title: "Select",
+                onclick: move |_| on_select(()),
+                Icon { width: 20, height: 20, icon: LdMousePointer }
+            }
+            button {
+                class: "edit-toolbar__tool",
+                "data-active": camera_active,
+                title: "Place camera",
+                onclick: move |_| on_add_camera(()),
+                Icon { width: 20, height: 20, icon: LdVideo }
             }
         }
     }

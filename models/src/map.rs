@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-/// A property map / scene. v1 holds only placed cameras; vector floor-plan
-/// elements (walls, rooms — scalable/stylable) come later.
+/// A property map / scene: placed cameras plus vector floor-plan elements
+/// (walls, doors). Other floor-plan elements (e.g. rooms) may still come
+/// later.
 ///
 /// Coordinates are real-world (identity scale) measured in centimeters. The
 /// outer map bounds are not modeled here — they are computed client-side
@@ -17,6 +18,10 @@ pub struct Map {
     pub name: String,
     /// Cameras placed on the map.
     pub cameras: Vec<MapCamera>,
+    /// Walls (and fences) placed on the map.
+    pub walls: Vec<MapWall>,
+    /// Doors (and gates) placed on the map.
+    pub doors: Vec<MapDoor>,
 }
 
 /// A camera placed on the map. `camera_id` == `Camera.id`; camera metadata is
@@ -30,6 +35,69 @@ pub struct MapCamera {
     pub position: Point,
     /// Field-of-view cone for the camera.
     pub fov: FieldOfView,
+}
+
+/// A wall (also used to represent a fence): a connected polyline in
+/// real-world coordinates. In practice always has >= 2 vertices.
+#[derive(Serialize, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MapWall {
+    /// Unique identifier for the wall.
+    pub id: String,
+    /// Polyline vertices; segment `i` runs from `vertices[i]` to
+    /// `vertices[i + 1]`.
+    pub vertices: Vec<Point>,
+    /// If true, an implicit closing segment runs from the last vertex back to
+    /// `vertices[0]`. Kept as a flag rather than a duplicated final vertex so
+    /// segment indices stay unambiguous and there's no degenerate
+    /// duplicate-point edge case.
+    pub closed: bool,
+    /// Display color, drawn from a curated palette.
+    pub color: WallColor,
+}
+
+/// A curated, closed color palette for walls/fences (not an arbitrary hex
+/// value), so the UI can offer a fixed swatch picker and the server can
+/// validate for free.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum WallColor {
+    #[default]
+    Slate,
+    Clay,
+    Moss,
+    Amber,
+    Sky,
+    Rose,
+}
+
+/// A door (also used for a gate): an independent two-point element, not
+/// attached to any wall by reference. Doors are freestanding, placed by the
+/// user in a gap left while drawing wall sections — the same way a camera is
+/// a freestanding placed element.
+#[derive(Serialize, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MapDoor {
+    /// Unique identifier for the door.
+    pub id: String,
+    /// One end of the door opening, in real-world coordinates.
+    pub start: Point,
+    /// The other end of the door opening, in real-world coordinates. Width is
+    /// implicit: the distance between `start` and `end`.
+    pub end: Point,
+    /// Which side the door opens toward.
+    pub swing: DoorSwing,
+}
+
+/// Which side a door/gate opens toward. Deliberately a plain 2-value enum
+/// rather than an angle — only the opening side needs to be visualized, not
+/// an exact sweep angle.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum DoorSwing {
+    #[default]
+    Left,
+    Right,
 }
 
 /// A point in the map's real-world coordinate space, in centimeters. Signed,
@@ -65,4 +133,73 @@ pub struct UpdateMapCameraRequest {
     pub position: Option<Point>,
     /// New field-of-view cone, if being changed.
     pub fov: Option<FieldOfView>,
+}
+
+/// Partial update for a placed wall; omitted fields are left unchanged.
+#[derive(Serialize, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateMapWallRequest {
+    /// New vertices, if being changed. Replaces the whole vector — not a
+    /// per-index patch — mirroring how `UpdateMapCameraRequest` replaces
+    /// `position`/`fov` wholesale.
+    pub vertices: Option<Vec<Point>>,
+    /// New closed flag, if being changed.
+    pub closed: Option<bool>,
+    /// New color, if being changed.
+    pub color: Option<WallColor>,
+}
+
+/// Partial update for a placed door; omitted fields are left unchanged.
+#[derive(Serialize, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateMapDoorRequest {
+    /// New start point, if being changed.
+    pub start: Option<Point>,
+    /// New end point, if being changed.
+    pub end: Option<Point>,
+    /// New swing side, if being changed.
+    pub swing: Option<DoorSwing>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn map_round_trips_through_postcard() {
+        let map = Map {
+            id: "map-1".into(),
+            name: "Front Yard".into(),
+            cameras: vec![MapCamera {
+                camera_id: "camera-1".into(),
+                position: Point { x: 100, y: 200 },
+                fov: FieldOfView {
+                    direction_deg: 90,
+                    angle_deg: 60,
+                    range: 500,
+                },
+            }],
+            walls: vec![MapWall {
+                id: "wall-1".into(),
+                vertices: vec![
+                    Point { x: 0, y: 0 },
+                    Point { x: 100, y: 0 },
+                    Point { x: 100, y: 100 },
+                ],
+                closed: true,
+                color: WallColor::Moss,
+            }],
+            doors: vec![MapDoor {
+                id: "door-1".into(),
+                start: Point { x: 100, y: 0 },
+                end: Point { x: 150, y: 0 },
+                swing: DoorSwing::Right,
+            }],
+        };
+
+        let bytes = postcard::to_allocvec(&map).expect("serialize");
+        let round_tripped: Map = postcard::from_bytes(&bytes).expect("deserialize");
+
+        assert!(round_tripped == map);
+    }
 }

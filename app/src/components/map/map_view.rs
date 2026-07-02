@@ -8,9 +8,10 @@ use wasm_bindgen::closure::Closure;
 use crate::components::layout::TopBar;
 use crate::components::map::camera_info::CameraInfo;
 use crate::components::map::camera_inspector::CameraInspector;
+use crate::components::map::door_inspector::DoorInspector;
 use crate::components::map::edit_toolbar::{CameraPicker, EditToolbar};
 use crate::components::map::map_camera::{MARKER_RADIUS_CM, MapCameraMarker};
-use crate::components::map::map_door::MapDoorMarker;
+use crate::components::map::map_door::{Endpoint, MapDoorMarker};
 use crate::components::map::map_wall::MapWallPath;
 use crate::components::map::minimap::Minimap;
 use crate::components::map::unplaced_badge::UnplacedBadge;
@@ -318,6 +319,15 @@ enum Gesture {
         last_x: f64,
         last_y: f64,
     },
+    /// Dragging a single endpoint of a selected door. Tracks the last screen
+    /// position so the per-move delta can be converted to world cm, same
+    /// shape as `MoveWallVertex`.
+    MoveDoorEndpoint {
+        door_id: String,
+        which: Endpoint,
+        last_x: f64,
+        last_y: f64,
+    },
 }
 
 impl Gesture {
@@ -333,6 +343,7 @@ impl Gesture {
             Gesture::AimCamera { .. } => "aim",
             Gesture::RangeCamera { .. } => "range",
             Gesture::MoveWallVertex { .. } => "move-vertex",
+            Gesture::MoveDoorEndpoint { .. } => "move-endpoint",
         }
     }
 }
@@ -356,6 +367,11 @@ enum DragPreview {
         vertex_index: usize,
         position: Point,
     },
+    DoorEndpoint {
+        door_id: String,
+        which: Endpoint,
+        position: Point,
+    },
 }
 
 /// The active editing tool. `Select` is the default/neutral tool (click to
@@ -376,11 +392,11 @@ enum Tool {
 }
 
 /// What's currently selected in edit mode, for the contextual inspector.
-/// More variants (`Door`) may join this enum in later PRs.
 #[derive(Clone, PartialEq)]
 enum Selection {
     Camera(String),
     Wall(String),
+    Door(String),
 }
 
 /// Euclidean distance between two points.
@@ -430,6 +446,9 @@ pub fn MapView() -> Element {
         recolor_wall,
         remove_wall,
         place_door,
+        move_door,
+        flip_door_swing,
+        remove_door,
         undo,
         redo,
         can_undo,
@@ -554,6 +573,9 @@ pub fn MapView() -> Element {
     // base position) and captures its copy by move, same as `placed` already
     // does for `MoveCamera`.
     let placed_walls_on_release = placed_walls.clone();
+    // Same rationale as `placed_walls_on_release`, for `MoveDoorEndpoint`'s
+    // commit in `onpointerup`.
+    let placed_doors_on_release = placed_doors.clone();
 
     // Fit and center the placed cameras, walls, and doors exactly once, after
     // layout has settled.
@@ -653,10 +675,27 @@ pub fn MapView() -> Element {
         })
         .collect();
 
-    // Doors aren't editable yet in this PR, so no preview overlay is needed —
-    // just the placed list as-is, same as `display_walls` was in PR5 before
-    // PR6 added drag-preview support.
-    let display_doors: Vec<MapDoor> = placed_doors.clone();
+    // Apply any active endpoint-drag preview so the canvas reflects the
+    // in-progress gesture, same shape as `display_walls` above.
+    let display_doors: Vec<MapDoor> = placed_doors
+        .iter()
+        .map(|door| {
+            let mut door = door.clone();
+            if let DragPreview::DoorEndpoint {
+                door_id,
+                which,
+                position,
+            } = &preview
+                && *door_id == door.id
+            {
+                match which {
+                    Endpoint::Start => door.start = position.clone(),
+                    Endpoint::End => door.end = position.clone(),
+                }
+            }
+            door
+        })
+        .collect();
 
     let transform = viewport.read().transform();
     let selected_camera_id = selection.read().clone().and_then(|s| match s {
@@ -665,6 +704,10 @@ pub fn MapView() -> Element {
     });
     let selected_wall_id = selection.read().clone().and_then(|s| match s {
         Selection::Wall(id) => Some(id),
+        _ => None,
+    });
+    let selected_door_id = selection.read().clone().and_then(|s| match s {
+        Selection::Door(id) => Some(id),
         _ => None,
     });
     let is_editing = *editing.read();
@@ -681,6 +724,11 @@ pub fn MapView() -> Element {
     let selected_wall = selected_wall_id
         .as_ref()
         .and_then(|id| display_walls.iter().find(|w| &w.id == id).cloned());
+
+    // The currently selected door (after preview), for the inspector.
+    let selected_door = selected_door_id
+        .as_ref()
+        .and_then(|id| display_doors.iter().find(|d| &d.id == id).cloned());
 
     // View-mode read-only info popover target. A tap pins a camera
     // (`info_camera_id`); hovering one sets `hovered_camera_id` (hover devices
@@ -891,11 +939,9 @@ pub fn MapView() -> Element {
                                 // second click both finishes AND commits in one
                                 // step — unlike wall drafting there is no
                                 // separate "finish" affordance. The newly
-                                // placed door is deliberately NOT selected:
-                                // `Selection::Door` doesn't exist yet (that's a
-                                // later PR), mirroring how PR5 left newly-drawn
-                                // walls unselected before PR6 added
-                                // `Selection::Wall`.
+                                // placed door is deliberately left unselected,
+                                // same as a newly-drawn wall: selecting it
+                                // requires a follow-up tap on the opening line.
                                 place_door(MapDoor {
                                     id: uuid::Uuid::new_v4().to_string(),
                                     start: start_point,
@@ -1023,6 +1069,42 @@ pub fn MapView() -> Element {
                                     });
                             }
                         }
+                        Gesture::MoveDoorEndpoint { door_id, which, last_x, last_y } => {
+                            let zoom = viewport.read().zoom;
+                            let dx = (cx - last_x) / zoom;
+                            let dy = (cy - last_y) / zoom;
+                            let base = drag_preview
+                                .read()
+                                .door_endpoint_for(&door_id, which)
+                                .or_else(|| {
+                                    placed_doors
+                                        .iter()
+                                        .find(|d| d.id == door_id)
+                                        .map(|d| match which {
+                                            Endpoint::Start => d.start.clone(),
+                                            Endpoint::End => d.end.clone(),
+                                        })
+                                });
+                            if let Some(base) = base {
+                                let position = Point {
+                                    x: base.x + dx.round() as i32,
+                                    y: base.y + dy.round() as i32,
+                                };
+                                drag_preview
+                                    .set(DragPreview::DoorEndpoint {
+                                        door_id: door_id.clone(),
+                                        which,
+                                        position,
+                                    });
+                                gesture
+                                    .set(Gesture::MoveDoorEndpoint {
+                                        door_id,
+                                        which,
+                                        last_x: cx,
+                                        last_y: cy,
+                                    });
+                            }
+                        }
                         Gesture::None | Gesture::Pinch { .. } => {}
                     }
                 },
@@ -1049,6 +1131,17 @@ pub fn MapView() -> Element {
                                     *v = position;
                                 }
                                 update_wall_vertices((wall_id, vertices));
+                            }
+                        }
+                        Gesture::MoveDoorEndpoint { door_id, which, .. } => {
+                            if let DragPreview::DoorEndpoint { position, .. } = drag_preview.read().clone()
+                                && let Some(door) = placed_doors_on_release.iter().find(|d| d.id == door_id)
+                            {
+                                let (new_start, new_end) = match which {
+                                    Endpoint::Start => (position, door.end.clone()),
+                                    Endpoint::End => (door.start.clone(), position),
+                                };
+                                move_door((door_id, new_start, new_end));
                             }
                         }
                         _ => {}
@@ -1269,7 +1362,36 @@ pub fn MapView() -> Element {
                     }
 
                     for door in display_doors.iter().cloned() {
-                        MapDoorMarker { key: "{door.id}", door }
+                        {
+                            let id = door.id.clone();
+                            let is_selected = selected_door_id.as_deref() == Some(id.as_str());
+                            rsx! {
+                                MapDoorMarker {
+                                    key: "{id}",
+                                    door,
+                                    selected: is_selected,
+                                    editing: is_editing,
+                                    on_body_pointer_down: {
+                                        let id = id.clone();
+                                        move |_evt: Event<PointerData>| {
+                                            selection.set(Some(Selection::Door(id.clone())));
+                                        }
+                                    },
+                                    on_endpoint_pointer_down: {
+                                        let id = id.clone();
+                                        move |(which, evt): (Endpoint, Event<PointerData>)| {
+                                            let (cx, cy) = canvas_xy(&evt.data(), *canvas_origin.read());
+                                            gesture.set(Gesture::MoveDoorEndpoint {
+                                                door_id: id.clone(),
+                                                which,
+                                                last_x: cx,
+                                                last_y: cy,
+                                            });
+                                        }
+                                    },
+                                }
+                            }
+                        }
                     }
 
                     // --- In-progress door placement preview ---
@@ -1384,9 +1506,9 @@ pub fn MapView() -> Element {
             }
 
             // --- Bottom chrome (edit mode only) ---
-            // Inspector takes precedence over the tool strip when a camera or
-            // wall is selected (camera first, then wall). Both sit above the
-            // global navigation toolbar.
+            // Inspector takes precedence over the tool strip when a camera,
+            // wall, or door is selected (camera first, then wall, then door).
+            // Both sit above the global navigation toolbar.
             if is_editing {
                 if let Some(camera) = selected_camera.clone() {
                     CameraInspector {
@@ -1437,6 +1559,21 @@ pub fn MapView() -> Element {
                             let id = wall.id.clone();
                             move |_| {
                                 remove_wall(id.clone());
+                                selection.set(None);
+                            }
+                        },
+                    }
+                } else if let Some(door) = selected_door.clone() {
+                    DoorInspector {
+                        door: door.clone(),
+                        on_flip_swing: {
+                            let id = door.id.clone();
+                            move |_| flip_door_swing(id.clone())
+                        },
+                        on_delete: {
+                            let id = door.id.clone();
+                            move |_| {
+                                remove_door(id.clone());
                                 selection.set(None);
                             }
                         },
@@ -1599,6 +1736,19 @@ impl DragPreview {
                 vertex_index: idx,
                 position,
             } if id == wall_id && *idx == vertex_index => Some(position.clone()),
+            _ => None,
+        }
+    }
+
+    /// The previewed position for endpoint `which` of `door_id`, if a
+    /// matching door-endpoint preview is active.
+    fn door_endpoint_for(&self, door_id: &str, which: Endpoint) -> Option<Point> {
+        match self {
+            DragPreview::DoorEndpoint {
+                door_id: id,
+                which: w,
+                position,
+            } if id == door_id && *w == which => Some(position.clone()),
             _ => None,
         }
     }

@@ -524,6 +524,61 @@ ul {
     cursor: crosshair;
 }
 
+/* Drawing a wall path uses the same crosshair affordance as camera placement,
+   kept as a separate attribute since the two interactions are conceptually
+   distinct and may diverge later. */
+.map-canvas[data-drawing-wall="true"] {
+    cursor: crosshair;
+}
+
+/* A placed wall/fence. Placeholder stroke color pending the real WallColor
+   palette (a later PR). */
+.map-wall__stroke {
+    stroke: var(--color-border-strong);
+    stroke-width: 6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+/* In-progress wall draft: committed segments so far. */
+.map-wall-draft__path {
+    stroke: var(--color-accent-border);
+    stroke-width: 6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    fill: none;
+}
+
+/* Rubber-band segment from the last committed vertex to the live cursor —
+   dashed to visually distinguish "not yet committed". */
+.map-wall-draft__rubber-band {
+    stroke: var(--color-accent-border);
+    stroke-width: 4;
+    stroke-dasharray: 10 8;
+    stroke-linecap: round;
+    fill: none;
+    opacity: 0.7;
+}
+
+/* A small dot at each committed vertex of the in-progress draft. */
+.map-wall-draft__vertex {
+    fill: var(--color-accent);
+    stroke: var(--color-text);
+    stroke-width: 1.5px;
+    vector-effect: non-scaling-stroke;
+}
+
+/* Highlighted ring around the first vertex once the draft has enough points
+   to close into a loop — signals "click here to close". */
+.map-wall-draft__close-target {
+    fill: none;
+    stroke: var(--color-accent);
+    stroke-width: 2px;
+    stroke-dasharray: 4 4;
+    vector-effect: non-scaling-stroke;
+    opacity: 0.85;
+}
+
 /* World-coordinate readout that follows the pointer while any placement tool
    is active. An HTML overlay (not SVG) positioned against the canvas frame,
    offset from the raw cursor point so the label doesn't sit under it. */
@@ -650,6 +705,13 @@ ul {
 .edit-toolbar__tool[data-active="true"] {
     background: var(--color-accent);
     border-color: var(--color-accent-border);
+}
+
+/* The contextual "Done" button is rare enough that a bare icon risks
+   ambiguity, so it pairs the icon with a visible text label. */
+.edit-toolbar__tool--labeled {
+    gap: 6px;
+    padding: 8px 14px;
 }
 
 /* Camera picker sheet: a bottom sheet above the tool strip. */

@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 use dioxus_free_icons::Icon;
-use dioxus_free_icons::icons::ld_icons::{LdMousePointer, LdVideo, LdX};
+use dioxus_free_icons::icons::ld_icons::{LdCheck, LdMinus, LdMousePointer, LdVideo, LdX};
 use shield_models::Camera;
 
 /// Bottom tool strip shown while editing the map. It is positioned in the same
@@ -25,6 +25,16 @@ pub fn EditToolbar(
     on_select: Callback,
     /// Open the camera picker sheet (existing "Add camera" behavior).
     on_add_camera: Callback,
+    /// Whether Draw-Wall is currently active (a wall draft is in progress, or
+    /// just armed with no vertices placed yet).
+    wall_active: bool,
+    /// Arm the Draw-Wall tool.
+    on_draw_wall: Callback,
+    /// Shown only while a wall draft has enough vertices to finish as an open
+    /// path (>= 2).
+    can_finish_wall: bool,
+    /// Finish the in-progress wall draft as an open path.
+    on_finish_wall: Callback,
 ) -> Element {
     rsx! {
         div { class: "edit-toolbar",
@@ -41,6 +51,22 @@ pub fn EditToolbar(
                 title: "Place camera",
                 onclick: move |_| on_add_camera(()),
                 Icon { width: 20, height: 20, icon: LdVideo }
+            }
+            button {
+                class: "edit-toolbar__tool",
+                "data-active": wall_active,
+                title: "Draw wall",
+                onclick: move |_| on_draw_wall(()),
+                Icon { width: 20, height: 20, icon: LdMinus }
+            }
+            if can_finish_wall {
+                button {
+                    class: "edit-toolbar__tool edit-toolbar__tool--labeled",
+                    title: "Finish wall",
+                    onclick: move |_| on_finish_wall(()),
+                    Icon { width: 20, height: 20, icon: LdCheck }
+                    span { "Done" }
+                }
             }
         }
     }

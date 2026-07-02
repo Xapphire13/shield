@@ -34,6 +34,16 @@ pub fn create_routes() -> Router<AppState> {
         .route(
             "/{id}/cameras/{camera_id}",
             patch(handlers::update_map_camera).delete(handlers::delete_map_camera),
+        )
+        .route("/{id}/walls", post(handlers::add_map_wall))
+        .route(
+            "/{id}/walls/{wall_id}",
+            patch(handlers::update_map_wall).delete(handlers::delete_map_wall),
+        )
+        .route("/{id}/doors", post(handlers::add_map_door))
+        .route(
+            "/{id}/doors/{door_id}",
+            patch(handlers::update_map_door).delete(handlers::delete_map_door),
         );
 
     Router::new()

@@ -1,5 +1,8 @@
 use dioxus::prelude::*;
-use shield_models::{FieldOfView, Map, MapCamera, Point, UpdateMapCameraRequest};
+use shield_models::{
+    DoorSwing, FieldOfView, Map, MapCamera, MapDoor, MapWall, Point, UpdateMapCameraRequest,
+    UpdateMapDoorRequest, UpdateMapWallRequest, WallColor,
+};
 
 use crate::{api::MapApi, hooks::use_api_client::use_api_client};
 
@@ -31,6 +34,46 @@ pub enum MapEdit {
         from: FieldOfView,
         to: FieldOfView,
     },
+    /// A wall was placed on the map.
+    AddWall(MapWall),
+    /// A wall was removed from the map. Stores the full [`MapWall`] so the
+    /// inverse can re-add it verbatim.
+    RemoveWall(MapWall),
+    /// A wall's vertices changed.
+    UpdateWallVertices {
+        wall_id: String,
+        from: Vec<Point>,
+        to: Vec<Point>,
+    },
+    /// A wall's closed flag changed.
+    UpdateWallClosed {
+        wall_id: String,
+        from: bool,
+        to: bool,
+    },
+    /// A wall's display color changed.
+    UpdateWallColor {
+        wall_id: String,
+        from: WallColor,
+        to: WallColor,
+    },
+    /// A door was placed on the map.
+    AddDoor(MapDoor),
+    /// A door was removed from the map. Stores the full [`MapDoor`] so the
+    /// inverse can re-add it verbatim.
+    RemoveDoor(MapDoor),
+    /// A door's start/end points changed (moved as a pair).
+    MoveDoor {
+        door_id: String,
+        from: (Point, Point),
+        to: (Point, Point),
+    },
+    /// A door's swing side was flipped.
+    FlipDoorSwing {
+        door_id: String,
+        from: DoorSwing,
+        to: DoorSwing,
+    },
 }
 
 impl MapEdit {
@@ -58,6 +101,35 @@ impl MapEdit {
                 from: to.clone(),
                 to: from.clone(),
             },
+            MapEdit::AddWall(wall) => MapEdit::RemoveWall(wall.clone()),
+            MapEdit::RemoveWall(wall) => MapEdit::AddWall(wall.clone()),
+            MapEdit::UpdateWallVertices { wall_id, from, to } => MapEdit::UpdateWallVertices {
+                wall_id: wall_id.clone(),
+                from: to.clone(),
+                to: from.clone(),
+            },
+            MapEdit::UpdateWallClosed { wall_id, from, to } => MapEdit::UpdateWallClosed {
+                wall_id: wall_id.clone(),
+                from: *to,
+                to: *from,
+            },
+            MapEdit::UpdateWallColor { wall_id, from, to } => MapEdit::UpdateWallColor {
+                wall_id: wall_id.clone(),
+                from: to.clone(),
+                to: from.clone(),
+            },
+            MapEdit::AddDoor(door) => MapEdit::RemoveDoor(door.clone()),
+            MapEdit::RemoveDoor(door) => MapEdit::AddDoor(door.clone()),
+            MapEdit::MoveDoor { door_id, from, to } => MapEdit::MoveDoor {
+                door_id: door_id.clone(),
+                from: to.clone(),
+                to: from.clone(),
+            },
+            MapEdit::FlipDoorSwing { door_id, from, to } => MapEdit::FlipDoorSwing {
+                door_id: door_id.clone(),
+                from: to.clone(),
+                to: from.clone(),
+            },
         }
     }
 
@@ -76,6 +148,40 @@ impl MapEdit {
             MapEdit::UpdateFov { camera_id, to, .. } => {
                 if let Some(camera) = map.cameras.iter_mut().find(|c| &c.camera_id == camera_id) {
                     camera.fov = to.clone();
+                }
+            }
+            MapEdit::AddWall(wall) => map.walls.push(wall.clone()),
+            MapEdit::RemoveWall(wall) => {
+                map.walls.retain(|w| w.id != wall.id);
+            }
+            MapEdit::UpdateWallVertices { wall_id, to, .. } => {
+                if let Some(wall) = map.walls.iter_mut().find(|w| &w.id == wall_id) {
+                    wall.vertices = to.clone();
+                }
+            }
+            MapEdit::UpdateWallClosed { wall_id, to, .. } => {
+                if let Some(wall) = map.walls.iter_mut().find(|w| &w.id == wall_id) {
+                    wall.closed = *to;
+                }
+            }
+            MapEdit::UpdateWallColor { wall_id, to, .. } => {
+                if let Some(wall) = map.walls.iter_mut().find(|w| &w.id == wall_id) {
+                    wall.color = to.clone();
+                }
+            }
+            MapEdit::AddDoor(door) => map.doors.push(door.clone()),
+            MapEdit::RemoveDoor(door) => {
+                map.doors.retain(|d| d.id != door.id);
+            }
+            MapEdit::MoveDoor { door_id, to, .. } => {
+                if let Some(door) = map.doors.iter_mut().find(|d| &d.id == door_id) {
+                    door.start = to.0.clone();
+                    door.end = to.1.clone();
+                }
+            }
+            MapEdit::FlipDoorSwing { door_id, to, .. } => {
+                if let Some(door) = map.doors.iter_mut().find(|d| &d.id == door_id) {
+                    door.swing = to.clone();
                 }
             }
         }
@@ -105,6 +211,50 @@ impl MapEdit {
                 };
                 client.update_camera(map_id, camera_id, update).await
             }
+            MapEdit::AddWall(wall) => client.add_wall(map_id, wall.clone()).await,
+            MapEdit::RemoveWall(wall) => client.delete_wall(map_id, &wall.id).await,
+            MapEdit::UpdateWallVertices { wall_id, to, .. } => {
+                let update = UpdateMapWallRequest {
+                    vertices: Some(to.clone()),
+                    closed: None,
+                    color: None,
+                };
+                client.update_wall(map_id, wall_id, update).await
+            }
+            MapEdit::UpdateWallClosed { wall_id, to, .. } => {
+                let update = UpdateMapWallRequest {
+                    vertices: None,
+                    closed: Some(*to),
+                    color: None,
+                };
+                client.update_wall(map_id, wall_id, update).await
+            }
+            MapEdit::UpdateWallColor { wall_id, to, .. } => {
+                let update = UpdateMapWallRequest {
+                    vertices: None,
+                    closed: None,
+                    color: Some(to.clone()),
+                };
+                client.update_wall(map_id, wall_id, update).await
+            }
+            MapEdit::AddDoor(door) => client.add_door(map_id, door.clone()).await,
+            MapEdit::RemoveDoor(door) => client.delete_door(map_id, &door.id).await,
+            MapEdit::MoveDoor { door_id, to, .. } => {
+                let update = UpdateMapDoorRequest {
+                    start: Some(to.0.clone()),
+                    end: Some(to.1.clone()),
+                    swing: None,
+                };
+                client.update_door(map_id, door_id, update).await
+            }
+            MapEdit::FlipDoorSwing { door_id, to, .. } => {
+                let update = UpdateMapDoorRequest {
+                    start: None,
+                    end: None,
+                    swing: Some(to.clone()),
+                };
+                client.update_door(map_id, door_id, update).await
+            }
         }
     }
 }
@@ -126,6 +276,24 @@ pub struct UseMapResult {
     pub aim_camera: Callback<(String, FieldOfView)>,
     /// Remove a camera from the map.
     pub remove_camera: Callback<String>,
+    /// Place a new wall (or fence) on the map.
+    pub place_wall: Callback<MapWall>,
+    /// Replace an existing wall's vertices.
+    pub update_wall_vertices: Callback<(String, Vec<Point>)>,
+    /// Close an existing wall (add the implicit closing segment).
+    pub close_wall: Callback<String>,
+    /// Recolor an existing wall.
+    pub recolor_wall: Callback<(String, WallColor)>,
+    /// Remove a wall from the map.
+    pub remove_wall: Callback<String>,
+    /// Place a new door (or gate) on the map.
+    pub place_door: Callback<MapDoor>,
+    /// Move an existing door's start/end points.
+    pub move_door: Callback<(String, Point, Point)>,
+    /// Flip an existing door's swing side.
+    pub flip_door_swing: Callback<String>,
+    /// Remove a door from the map.
+    pub remove_door: Callback<String>,
     /// Undo the most recent edit.
     pub undo: Callback<()>,
     /// Redo the most recently undone edit.
@@ -261,6 +429,136 @@ pub fn use_map(map_id: String) -> UseMapResult {
         }
     });
 
+    let place_wall = use_callback({
+        let mut commit = commit.clone();
+        move |wall: MapWall| commit(MapEdit::AddWall(wall))
+    });
+
+    let update_wall_vertices = use_callback({
+        let mut commit = commit.clone();
+        move |(wall_id, to): (String, Vec<Point>)| {
+            let Some(from) = map()
+                .and_then(|m| m.walls.into_iter().find(|w| w.id == wall_id))
+                .map(|w| w.vertices)
+            else {
+                return;
+            };
+
+            if from == to {
+                return;
+            }
+
+            commit(MapEdit::UpdateWallVertices { wall_id, from, to });
+        }
+    });
+
+    let close_wall = use_callback({
+        let mut commit = commit.clone();
+        move |wall_id: String| {
+            let Some(closed) = map()
+                .and_then(|m| m.walls.into_iter().find(|w| w.id == wall_id))
+                .map(|w| w.closed)
+            else {
+                return;
+            };
+
+            if closed {
+                return;
+            }
+
+            commit(MapEdit::UpdateWallClosed {
+                wall_id,
+                from: false,
+                to: true,
+            });
+        }
+    });
+
+    let recolor_wall = use_callback({
+        let mut commit = commit.clone();
+        move |(wall_id, to): (String, WallColor)| {
+            let Some(from) = map()
+                .and_then(|m| m.walls.into_iter().find(|w| w.id == wall_id))
+                .map(|w| w.color)
+            else {
+                return;
+            };
+
+            if from == to {
+                return;
+            }
+
+            commit(MapEdit::UpdateWallColor { wall_id, from, to });
+        }
+    });
+
+    let remove_wall = use_callback({
+        let mut commit = commit.clone();
+        move |wall_id: String| {
+            let Some(wall) = map().and_then(|m| m.walls.into_iter().find(|w| w.id == wall_id))
+            else {
+                return;
+            };
+
+            commit(MapEdit::RemoveWall(wall))
+        }
+    });
+
+    let place_door = use_callback({
+        let mut commit = commit.clone();
+        move |door: MapDoor| commit(MapEdit::AddDoor(door))
+    });
+
+    let move_door = use_callback({
+        let mut commit = commit.clone();
+        move |(door_id, new_start, new_end): (String, Point, Point)| {
+            let Some(from) = map()
+                .and_then(|m| m.doors.into_iter().find(|d| d.id == door_id))
+                .map(|d| (d.start, d.end))
+            else {
+                return;
+            };
+
+            let to = (new_start, new_end);
+            if from == to {
+                return;
+            }
+
+            commit(MapEdit::MoveDoor { door_id, from, to });
+        }
+    });
+
+    let flip_door_swing = use_callback({
+        let mut commit = commit.clone();
+        move |door_id: String| {
+            let Some(from) = map()
+                .and_then(|m| m.doors.into_iter().find(|d| d.id == door_id))
+                .map(|d| d.swing)
+            else {
+                return;
+            };
+
+            let to = match from {
+                DoorSwing::Left => DoorSwing::Right,
+                DoorSwing::Right => DoorSwing::Left,
+            };
+
+            commit(MapEdit::FlipDoorSwing { door_id, from, to });
+        }
+    });
+
+    let remove_door = use_callback({
+        let mut commit = commit.clone();
+        move |door_id: String| {
+            let Some(door) = map().and_then(|m| m.doors.into_iter().find(|d| d.id == door_id))
+            else {
+                return;
+            };
+
+            commit(MapEdit::RemoveDoor(door))
+        }
+    });
+
     let undo = use_callback({
         let client = client.clone();
         let map_id = map_id.clone();
@@ -315,6 +613,15 @@ pub fn use_map(map_id: String) -> UseMapResult {
         move_camera,
         aim_camera,
         remove_camera,
+        place_wall,
+        update_wall_vertices,
+        close_wall,
+        recolor_wall,
+        remove_wall,
+        place_door,
+        move_door,
+        flip_door_swing,
+        remove_door,
         undo,
         redo,
         can_undo: !undo_stack.read().is_empty(),

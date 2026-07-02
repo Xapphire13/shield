@@ -13,6 +13,7 @@ use crate::components::map::map_camera::{MARKER_RADIUS_CM, MapCameraMarker};
 use crate::components::map::map_wall::MapWallPath;
 use crate::components::map::minimap::Minimap;
 use crate::components::map::unplaced_badge::UnplacedBadge;
+use crate::components::map::wall_inspector::WallInspector;
 use crate::components::map::zoom_controls::ZoomControls;
 use crate::hooks::{UseCamerasResult, UseMapResult, use_cameras, use_map};
 
@@ -297,6 +298,15 @@ enum Gesture {
     RangeCamera {
         camera_id: String,
     },
+    /// Dragging a single vertex of a selected wall. Tracks the last screen
+    /// position so the per-move delta can be converted to world cm, same
+    /// shape as `MoveCamera`.
+    MoveWallVertex {
+        wall_id: String,
+        vertex_index: usize,
+        last_x: f64,
+        last_y: f64,
+    },
 }
 
 impl Gesture {
@@ -311,6 +321,7 @@ impl Gesture {
             Gesture::MoveCamera { .. } => "move",
             Gesture::AimCamera { .. } => "aim",
             Gesture::RangeCamera { .. } => "range",
+            Gesture::MoveWallVertex { .. } => "move-vertex",
         }
     }
 }
@@ -321,8 +332,19 @@ impl Gesture {
 #[derive(Clone, PartialEq)]
 enum DragPreview {
     None,
-    Position { camera_id: String, position: Point },
-    Fov { camera_id: String, fov: FieldOfView },
+    Position {
+        camera_id: String,
+        position: Point,
+    },
+    Fov {
+        camera_id: String,
+        fov: FieldOfView,
+    },
+    WallVertex {
+        wall_id: String,
+        vertex_index: usize,
+        position: Point,
+    },
 }
 
 /// The active editing tool. `Select` is the default/neutral tool (click to
@@ -340,10 +362,11 @@ enum Tool {
 }
 
 /// What's currently selected in edit mode, for the contextual inspector.
-/// More variants (`Wall`, `Door`) join this enum in later PRs.
+/// More variants (`Door`) may join this enum in later PRs.
 #[derive(Clone, PartialEq)]
 enum Selection {
     Camera(String),
+    Wall(String),
 }
 
 /// Euclidean distance between two points.
@@ -388,6 +411,9 @@ pub fn MapView() -> Element {
         aim_camera,
         remove_camera,
         place_wall,
+        update_wall_vertices,
+        close_wall,
+        remove_wall,
         undo,
         redo,
         can_undo,
@@ -497,6 +523,11 @@ pub fn MapView() -> Element {
 
     let placed = map.as_ref().map(|m| m.cameras.clone()).unwrap_or_default();
     let placed_walls = map.as_ref().map(|m| m.walls.clone()).unwrap_or_default();
+    // A second copy for `onpointerup`'s `MoveWallVertex` commit: `onpointermove`
+    // (below) also needs the un-previewed wall list (to seed a vertex drag's
+    // base position) and captures its copy by move, same as `placed` already
+    // does for `MoveCamera`.
+    let placed_walls_on_release = placed_walls.clone();
 
     // Fit and center the placed cameras and walls exactly once, after layout
     // has settled.
@@ -574,12 +605,35 @@ pub fn MapView() -> Element {
         })
         .collect();
 
-    // Existing walls can't be edited in this PR, so unlike `display_cameras`
-    // there's no preview overlay to apply — just the stored walls as-is.
-    let display_walls: Vec<MapWall> = placed_walls.clone();
+    // Apply any active vertex-drag preview so the canvas reflects the
+    // in-progress gesture, same shape as `display_cameras` above.
+    let display_walls: Vec<MapWall> = placed_walls
+        .iter()
+        .map(|wall| {
+            let mut wall = wall.clone();
+            if let DragPreview::WallVertex {
+                wall_id,
+                vertex_index,
+                position,
+            } = &preview
+                && *wall_id == wall.id
+                && let Some(v) = wall.vertices.get_mut(*vertex_index)
+            {
+                *v = position.clone();
+            }
+            wall
+        })
+        .collect();
 
     let transform = viewport.read().transform();
-    let selected_camera_id = selection.read().clone().map(|Selection::Camera(id)| id);
+    let selected_camera_id = selection.read().clone().and_then(|s| match s {
+        Selection::Camera(id) => Some(id),
+        _ => None,
+    });
+    let selected_wall_id = selection.read().clone().and_then(|s| match s {
+        Selection::Wall(id) => Some(id),
+        _ => None,
+    });
     let is_editing = *editing.read();
     let is_placing = matches!(*tool.read(), Tool::PlaceCamera(_));
     let is_drawing_wall = matches!(*tool.read(), Tool::DrawWall { .. });
@@ -589,6 +643,11 @@ pub fn MapView() -> Element {
     let selected_camera = selected_camera_id
         .as_ref()
         .and_then(|id| display_cameras.iter().find(|c| &c.camera_id == id).cloned());
+
+    // The currently selected wall (after preview), for the inspector.
+    let selected_wall = selected_wall_id
+        .as_ref()
+        .and_then(|id| display_walls.iter().find(|w| &w.id == id).cloned());
 
     // View-mode read-only info popover target. A tap pins a camera
     // (`info_camera_id`); hovering one sets `hovered_camera_id` (hover devices
@@ -870,6 +929,39 @@ pub fn MapView() -> Element {
                                 drag_preview.set(DragPreview::Fov { camera_id, fov });
                             }
                         }
+                        Gesture::MoveWallVertex { wall_id, vertex_index, last_x, last_y } => {
+                            let zoom = viewport.read().zoom;
+                            let dx = (cx - last_x) / zoom;
+                            let dy = (cy - last_y) / zoom;
+                            let base = drag_preview
+                                .read()
+                                .wall_vertex_for(&wall_id, vertex_index)
+                                .or_else(|| {
+                                    placed_walls
+                                        .iter()
+                                        .find(|w| w.id == wall_id)
+                                        .and_then(|w| w.vertices.get(vertex_index).cloned())
+                                });
+                            if let Some(base) = base {
+                                let position = Point {
+                                    x: base.x + dx.round() as i32,
+                                    y: base.y + dy.round() as i32,
+                                };
+                                drag_preview
+                                    .set(DragPreview::WallVertex {
+                                        wall_id: wall_id.clone(),
+                                        vertex_index,
+                                        position,
+                                    });
+                                gesture
+                                    .set(Gesture::MoveWallVertex {
+                                        wall_id,
+                                        vertex_index,
+                                        last_x: cx,
+                                        last_y: cy,
+                                    });
+                            }
+                        }
                         Gesture::None | Gesture::Pinch { .. } => {}
                     }
                 },
@@ -885,6 +977,17 @@ pub fn MapView() -> Element {
                         Gesture::AimCamera { camera_id } | Gesture::RangeCamera { camera_id } => {
                             if let DragPreview::Fov { fov, .. } = drag_preview.read().clone() {
                                 aim_camera((camera_id, fov));
+                            }
+                        }
+                        Gesture::MoveWallVertex { wall_id, vertex_index, .. } => {
+                            if let DragPreview::WallVertex { position, .. } = drag_preview.read().clone()
+                                && let Some(wall) = placed_walls_on_release.iter().find(|w| w.id == wall_id)
+                            {
+                                let mut vertices = wall.vertices.clone();
+                                if let Some(v) = vertices.get_mut(vertex_index) {
+                                    *v = position;
+                                }
+                                update_wall_vertices((wall_id, vertices));
                             }
                         }
                         _ => {}
@@ -1072,7 +1175,36 @@ pub fn MapView() -> Element {
                     }
 
                     for wall in display_walls.iter().cloned() {
-                        MapWallPath { key: "{wall.id}", wall }
+                        {
+                            let id = wall.id.clone();
+                            let is_selected = selected_wall_id.as_deref() == Some(id.as_str());
+                            rsx! {
+                                MapWallPath {
+                                    key: "{id}",
+                                    wall,
+                                    selected: is_selected,
+                                    editing: is_editing,
+                                    on_path_pointer_down: {
+                                        let id = id.clone();
+                                        move |_evt: Event<PointerData>| {
+                                            selection.set(Some(Selection::Wall(id.clone())));
+                                        }
+                                    },
+                                    on_vertex_pointer_down: {
+                                        let id = id.clone();
+                                        move |(vertex_index, evt): (usize, Event<PointerData>)| {
+                                            let (cx, cy) = canvas_xy(&evt.data(), *canvas_origin.read());
+                                            gesture.set(Gesture::MoveWallVertex {
+                                                wall_id: id.clone(),
+                                                vertex_index,
+                                                last_x: cx,
+                                                last_y: cy,
+                                            });
+                                        }
+                                    },
+                                }
+                            }
+                        }
                     }
 
                     // --- In-progress wall draft ---
@@ -1163,8 +1295,9 @@ pub fn MapView() -> Element {
             }
 
             // --- Bottom chrome (edit mode only) ---
-            // Inspector takes precedence over the tool strip when a camera is
-            // selected. Both sit above the global navigation toolbar.
+            // Inspector takes precedence over the tool strip when a camera or
+            // wall is selected (camera first, then wall). Both sit above the
+            // global navigation toolbar.
             if is_editing {
                 if let Some(camera) = selected_camera.clone() {
                     CameraInspector {
@@ -1196,6 +1329,21 @@ pub fn MapView() -> Element {
                             let id = camera.camera_id.clone();
                             move |_| {
                                 remove_camera(id.clone());
+                                selection.set(None);
+                            }
+                        },
+                    }
+                } else if let Some(wall) = selected_wall.clone() {
+                    WallInspector {
+                        wall: wall.clone(),
+                        on_close_loop: {
+                            let id = wall.id.clone();
+                            move |_| close_wall(id.clone())
+                        },
+                        on_delete: {
+                            let id = wall.id.clone();
+                            move |_| {
+                                remove_wall(id.clone());
                                 selection.set(None);
                             }
                         },
@@ -1340,6 +1488,19 @@ impl DragPreview {
     fn fov_for(&self, camera_id: &str) -> Option<FieldOfView> {
         match self {
             DragPreview::Fov { camera_id: id, fov } if id == camera_id => Some(fov.clone()),
+            _ => None,
+        }
+    }
+
+    /// The previewed position for vertex `vertex_index` of `wall_id`, if a
+    /// matching wall-vertex preview is active.
+    fn wall_vertex_for(&self, wall_id: &str, vertex_index: usize) -> Option<Point> {
+        match self {
+            DragPreview::WallVertex {
+                wall_id: id,
+                vertex_index: idx,
+                position,
+            } if id == wall_id && *idx == vertex_index => Some(position.clone()),
             _ => None,
         }
     }

@@ -532,12 +532,38 @@ ul {
 }
 
 /* A placed wall/fence. Placeholder stroke color pending the real WallColor
-   palette (a later PR). */
+   palette (a later PR). `pointer-events: stroke` widens the clickable area to
+   the full rendered stroke width (an SVG path with fill:none otherwise only
+   registers pointer events exactly on the infinitely-thin center line),
+   which combined with the existing stroke-width makes it comfortably
+   clickable without needing a separate invisible hit-target layer. */
 .map-wall__stroke {
     stroke: var(--color-border-strong);
     stroke-width: 6;
     stroke-linecap: round;
     stroke-linejoin: round;
+    pointer-events: stroke;
+}
+
+.map-wall[data-editing="true"] .map-wall__stroke {
+    cursor: pointer;
+}
+
+/* Selected wall: emphasize its stroke, same treatment as a selected camera's
+   marker/fov. */
+.map-wall[data-selected="true"] .map-wall__stroke {
+    stroke: var(--color-accent);
+    stroke-width: 7;
+}
+
+/* On-canvas vertex drag handles for the selected wall, shown once selected
+   and editing. Similar visual weight to `.map-camera__handle`. */
+.map-wall__vertex-handle {
+    fill: var(--color-surface);
+    stroke: var(--color-text);
+    stroke-width: 1.5px;
+    vector-effect: non-scaling-stroke;
+    cursor: move;
 }
 
 /* In-progress wall draft: committed segments so far. */
@@ -842,6 +868,57 @@ ul {
 .camera-inspector__field input[type="range"] {
     width: 100%;
     accent-color: var(--color-accent);
+}
+
+/* Inspector sheet for the selected wall: same bottom-sheet container styling
+   as `.camera-inspector`, simplified (no sliders yet — recoloring lands in a
+   later PR). */
+.wall-inspector {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: calc(var(--z-bottom-toolbar) + 1);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    background-color: var(--color-surface);
+    border-top: 1px solid var(--color-border);
+    border-radius: 12px 12px 0 0;
+    box-shadow: 0 -8px 24px var(--color-shadow);
+    padding: 16px;
+}
+
+.wall-inspector__header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.wall-inspector__title {
+    flex: 1;
+    font-weight: bold;
+    font-size: 1.1rem;
+}
+
+.wall-inspector__close-loop {
+    display: block;
+    width: 100%;
+    text-align: center;
+    background: none;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    color: var(--color-text);
+    font-family: inherit;
+    font-size: 1rem;
+    padding: 10px 16px;
+    cursor: pointer;
+}
+
+@media (hover: hover) {
+    .wall-inspector__close-loop:hover {
+        background-color: var(--color-surface-highlight);
+    }
 }
 
 /* Read-only info popover for a camera shown on the map in view mode, anchored

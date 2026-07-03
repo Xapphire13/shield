@@ -2,26 +2,14 @@ use std::ops::Deref;
 
 use anyhow::Result;
 use postcard::{from_bytes, to_allocvec};
-use serde::Deserialize;
+#[allow(deprecated)]
+use shield_models::MapV1;
 use shield_models::{
-    Map, MapCamera, MapDoor, MapWall, UpdateMapCameraRequest, UpdateMapDoorRequest,
+    Map, MapCamera, MapDoor, MapV2, MapWall, UpdateMapCameraRequest, UpdateMapDoorRequest,
     UpdateMapWallRequest,
 };
 use sled::Db;
 use tracing::info;
-
-/// Shape of a persisted map from before `walls`/`doors` existed on [`Map`].
-/// Postcard is positional (no per-field presence markers), so a record
-/// written under this shorter shape fails outright to deserialize as the
-/// current `Map` rather than defaulting the missing trailing fields — this
-/// lets `get_map` fall back and migrate it on read.
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct MapV1 {
-    id: String,
-    name: String,
-    cameras: Vec<MapCamera>,
-}
 
 pub struct MapStore {
     db: Db,
@@ -35,11 +23,14 @@ impl MapStore {
     }
 
     /// Loads the stored map, or a default empty map if none exists yet.
+    /// Tries the current schema first, falling back to older ones and
+    /// migrating (re-persisting) whichever one the record actually matches.
+    #[allow(deprecated)]
     pub fn get_map(&self, id: &str) -> Result<Map> {
         match self.db.get(id)? {
             Some(record) => {
                 let bytes = record.deref();
-                match from_bytes::<Map>(bytes) {
+                match from_bytes::<MapV2>(bytes) {
                     Ok(map) => Ok(map),
                     Err(_) => {
                         let legacy: MapV1 = from_bytes(bytes)?;

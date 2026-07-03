@@ -18,16 +18,34 @@ pub struct Map {
     pub name: String,
     /// Cameras placed on the map.
     pub cameras: Vec<MapCamera>,
-    /// Walls (and fences) placed on the map. `serde(default)` so maps
-    /// persisted before this field existed (postcard is positional, not
-    /// self-describing) still deserialize instead of erroring on missing
-    /// trailing bytes.
-    #[serde(default)]
+    /// Walls (and fences) placed on the map.
     pub walls: Vec<MapWall>,
-    /// Doors (and gates) placed on the map. See `walls` for why this
-    /// defaults.
-    #[serde(default)]
+    /// Doors (and gates) placed on the map.
     pub doors: Vec<MapDoor>,
+}
+
+/// Alias for the current shape of [`Map`], named for symmetry with
+/// [`MapV1`] wherever storage-layer migration code needs to refer to "the
+/// current version" explicitly rather than just "the map."
+pub type MapV2 = Map;
+
+/// The on-disk shape of [`Map`] before `walls`/`doors` existed.
+///
+/// Postcard is positional (no per-field presence markers), so a record
+/// written under this shorter shape fails outright to deserialize as
+/// [`Map`]/[`MapV2`] rather than defaulting the missing trailing fields.
+/// Deprecated: this only exists so the storage layer can fall back to it
+/// when reading old records and migrate them to [`MapV2`]; nothing else
+/// should construct or depend on it.
+#[deprecated(
+    note = "superseded by MapV2 (aka Map); kept only to migrate old postcard-persisted records"
+)]
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MapV1 {
+    pub id: String,
+    pub name: String,
+    pub cameras: Vec<MapCamera>,
 }
 
 /// A camera placed on the map. `camera_id` == `Camera.id`; camera metadata is

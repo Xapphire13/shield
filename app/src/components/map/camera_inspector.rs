@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 use dioxus_free_icons::Icon;
-use dioxus_free_icons::icons::fi_icons::FiTrash2;
+use dioxus_free_icons::icons::ld_icons::LdTrash2;
 use shield_models::FieldOfView;
 
 use crate::components::ui::{ButtonColor, IconButton};
@@ -42,7 +42,7 @@ pub fn CameraInspector(
                 }
                 IconButton {
                     icon: rsx! {
-                        Icon { width: 20, height: 20, icon: FiTrash2 }
+                        Icon { width: 20, height: 20, icon: LdTrash2 }
                     },
                     color: ButtonColor::Danger,
                     on_press: move |_| on_delete(()),

@@ -18,9 +18,15 @@ pub struct Map {
     pub name: String,
     /// Cameras placed on the map.
     pub cameras: Vec<MapCamera>,
-    /// Walls (and fences) placed on the map.
+    /// Walls (and fences) placed on the map. `serde(default)` so maps
+    /// persisted before this field existed (postcard is positional, not
+    /// self-describing) still deserialize instead of erroring on missing
+    /// trailing bytes.
+    #[serde(default)]
     pub walls: Vec<MapWall>,
-    /// Doors (and gates) placed on the map.
+    /// Doors (and gates) placed on the map. See `walls` for why this
+    /// defaults.
+    #[serde(default)]
     pub doors: Vec<MapDoor>,
 }
 

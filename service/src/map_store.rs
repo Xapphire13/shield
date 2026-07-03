@@ -2,8 +2,10 @@ use std::ops::Deref;
 
 use anyhow::Result;
 use postcard::{from_bytes, to_allocvec};
+#[allow(deprecated)]
+use shield_models::MapV1;
 use shield_models::{
-    Map, MapCamera, MapDoor, MapWall, UpdateMapCameraRequest, UpdateMapDoorRequest,
+    Map, MapCamera, MapDoor, MapV2, MapWall, UpdateMapCameraRequest, UpdateMapDoorRequest,
     UpdateMapWallRequest,
 };
 use sled::Db;
@@ -21,9 +23,30 @@ impl MapStore {
     }
 
     /// Loads the stored map, or a default empty map if none exists yet.
+    /// Tries the current schema first, falling back to older ones and
+    /// migrating (re-persisting) whichever one the record actually matches.
+    #[allow(deprecated)]
     pub fn get_map(&self, id: &str) -> Result<Map> {
         match self.db.get(id)? {
-            Some(record) => Ok(from_bytes(record.deref())?),
+            Some(record) => {
+                let bytes = record.deref();
+                match from_bytes::<MapV2>(bytes) {
+                    Ok(map) => Ok(map),
+                    Err(_) => {
+                        let legacy: MapV1 = from_bytes(bytes)?;
+                        let map = Map {
+                            id: legacy.id,
+                            name: legacy.name,
+                            cameras: legacy.cameras,
+                            walls: vec![],
+                            doors: vec![],
+                        };
+                        self.persist(&map)?;
+                        info!("Migrated map {id} to current schema");
+                        Ok(map)
+                    }
+                }
+            }
             None => Ok(Map {
                 id: id.to_string(),
                 name: "Default".into(),

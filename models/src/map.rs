@@ -30,13 +30,6 @@ pub struct MapV2 {
 pub type Map = MapV2;
 
 /// The on-disk shape of [`Map`] before `walls`/`doors` existed.
-///
-/// Postcard is positional (no per-field presence markers), so a record
-/// written under this shorter shape fails outright to deserialize as
-/// [`Map`]/[`MapV2`] rather than defaulting the missing trailing fields.
-/// Deprecated: this only exists so the storage layer can fall back to it
-/// when reading old records and migrate them to [`MapV2`]; nothing else
-/// should construct or depend on it.
 #[deprecated(
     note = "superseded by MapV2 (aka Map); kept only to migrate old postcard-persisted records"
 )]

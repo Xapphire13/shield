@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 /// for this shared model.
 #[derive(Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct Map {
+pub struct MapV2 {
     /// Unique identifier for the map.
     pub id: String,
     /// Human-readable name of the map.
@@ -24,10 +24,10 @@ pub struct Map {
     pub doors: Vec<MapDoor>,
 }
 
-/// Alias for the current shape of [`Map`], named for symmetry with
-/// [`MapV1`] wherever storage-layer migration code needs to refer to "the
-/// current version" explicitly rather than just "the map."
-pub type MapV2 = Map;
+/// Ergonomic alias for the current map version, so the rest of the codebase
+/// (which doesn't care about schema history) can keep saying "Map" while the
+/// struct itself — [`MapV2`] — inherently carries its version.
+pub type Map = MapV2;
 
 /// The on-disk shape of [`Map`] before `walls`/`doors` existed.
 ///

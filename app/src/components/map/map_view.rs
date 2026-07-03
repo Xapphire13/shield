@@ -306,8 +306,11 @@ enum DragPreview {
 /// select, drag to move/pan); other variants arm a placement/drawing
 /// interaction. More variants (`DrawWall`, `PlaceDoor`) join this enum in
 /// later PRs — kept minimal here to only what camera placement needs today.
+/// `pub(crate)` so `EditToolbar` can match on it directly to derive each
+/// button's active state, rather than the caller pre-computing a bool per
+/// tool.
 #[derive(Clone, PartialEq, Default)]
-enum Tool {
+pub(crate) enum Tool {
     #[default]
     Select,
     /// A camera id chosen from the picker, awaiting a placement tap.
@@ -1000,8 +1003,8 @@ pub fn MapView() -> Element {
                     }
                 } else {
                     EditToolbar {
-                        select_active: matches!(*tool.read(), Tool::Select),
-                        camera_active: *picker_open.read() || matches!(*tool.read(), Tool::PlaceCamera(_)),
+                        active_tool: tool.read().clone(),
+                        camera_picker_open: *picker_open.read(),
                         on_select: move |_| {
                             tool.set(Tool::Select);
                             picker_open.set(false);

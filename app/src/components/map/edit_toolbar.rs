@@ -3,34 +3,40 @@ use dioxus_free_icons::Icon;
 use dioxus_free_icons::icons::ld_icons::{LdMousePointer, LdVideo, LdX};
 use shield_models::Camera;
 
+use crate::components::map::map_view::Tool;
+
 /// Bottom tool strip shown while editing the map. It is positioned in the same
 /// bottom zone as the global navigation toolbar and stacks above it, visually
 /// replacing it for the duration of edit mode.
 ///
 /// Icon-only buttons (a `title` gives a hover tooltip / accessible name, but no
 /// visible text label — this strip is expected to grow more tools, like
-/// draw-wall and place-door, in later PRs, and labels would not fit). The host
-/// (`MapView`) owns which tool is active, tracked as a private enum there; this
-/// component only sees plain booleans/callbacks, so it stays decoupled from
-/// that internal shape.
+/// draw-wall and place-door, in later PRs, and labels would not fit). Takes
+/// the host's `Tool` directly (rather than one bool per tool) so each new
+/// tool button just matches a new variant instead of the caller needing to
+/// pre-compute and wire up another boolean.
 #[component]
 pub fn EditToolbar(
-    /// Whether the Select tool is currently active (the neutral default).
-    select_active: bool,
-    /// Whether Place-Camera is armed (either the picker sheet is open, or a
-    /// specific camera has been chosen and is awaiting a placement tap).
-    camera_active: bool,
+    /// The currently active tool; each button's active state is derived from
+    /// this by matching its variant.
+    active_tool: Tool,
+    /// Whether the camera picker sheet is open. Not part of `Tool` (picking a
+    /// camera happens before `active_tool` becomes `PlaceCamera`), so it's
+    /// passed alongside to keep the Place-Camera button highlighted while the
+    /// sheet is up.
+    camera_picker_open: bool,
     /// Switch to the Select tool (also used to cancel an in-progress camera
     /// placement).
     on_select: Callback,
     /// Open the camera picker sheet (existing "Add camera" behavior).
     on_add_camera: Callback,
 ) -> Element {
+    let camera_active = camera_picker_open || matches!(active_tool, Tool::PlaceCamera(_));
     rsx! {
         div { class: "edit-toolbar",
             button {
                 class: "edit-toolbar__tool",
-                "data-active": select_active,
+                "data-active": matches!(active_tool, Tool::Select),
                 title: "Select",
                 onclick: move |_| on_select(()),
                 Icon { width: 20, height: 20, icon: LdMousePointer }

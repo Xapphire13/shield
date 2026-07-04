@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 use dioxus_free_icons::Icon;
 use dioxus_free_icons::icons::ld_icons::{LdCornerUpLeft, LdCornerUpRight};
-use shield_models::{FieldOfView, MapCamera, Point};
+use shield_models::{FieldOfView, MapCamera, MapWall, Point, WallColor};
 use wasm_bindgen::JsCast;
 use wasm_bindgen::closure::Closure;
 
@@ -10,6 +10,7 @@ use crate::components::map::camera_info::CameraInfo;
 use crate::components::map::camera_inspector::CameraInspector;
 use crate::components::map::edit_toolbar::{CameraPicker, EditToolbar};
 use crate::components::map::map_camera::{MARKER_RADIUS_CM, MapCameraMarker};
+use crate::components::map::map_wall::MapWallPath;
 use crate::components::map::minimap::Minimap;
 use crate::components::map::unplaced_badge::UnplacedBadge;
 use crate::components::map::zoom_controls::ZoomControls;
@@ -76,6 +77,12 @@ const BUTTON_ZOOM_STEP: f64 = 1.2;
 /// Smallest range a camera cone may be dragged to (centimeters).
 const MIN_RANGE_CM: i32 = 50;
 
+/// Screen-pixel radius (not world-space) within which a click near the
+/// first vertex of an in-progress wall draft closes the path into a loop.
+/// Screen-space, not world-space, so the target feels the same size
+/// regardless of zoom level.
+const CLOSE_LOOP_HIT_RADIUS_PX: f64 = 14.0;
+
 /// Viewport transform mapping logical world coordinates (centimeters) to screen
 /// pixels: `screen = world * zoom + pan`.
 ///
@@ -132,6 +139,12 @@ impl Viewport {
         ((sx - self.pan_x) / self.zoom, (sy - self.pan_y) / self.zoom)
     }
 
+    /// Convert a world coordinate (centimeters) to a screen-pixel point
+    /// (relative to the canvas element). Inverse of `screen_to_world`.
+    fn world_to_screen(&self, wx: f64, wy: f64) -> (f64, f64) {
+        (wx * self.zoom + self.pan_x, wy * self.zoom + self.pan_y)
+    }
+
     /// SVG transform string for the world-space content group.
     fn transform(&self) -> String {
         format!(
@@ -177,10 +190,10 @@ const MIN_CONTENT_HALF_EXTENT: f64 = 50.0;
 const ARC_SAMPLE_STEP_DEG: f64 = 2.0;
 
 /// World-space bounding box `(min_x, min_y, max_x, max_y)` in centimeters that
-/// tightly encloses what is actually drawn for every camera: the marker disc
+/// tightly encloses what is actually drawn for every camera (the marker disc
 /// (`position` ± [`MARKER_RADIUS_CM`]) and the FOV wedge (apex at `position`
-/// plus its arc). Returns `None` for an empty set (callers keep the default
-/// view).
+/// plus its arc)) and every wall vertex. Returns `None` only when both
+/// `cameras` and `walls` are empty (callers keep the default view).
 ///
 /// The wedge is directional, so a symmetric ±`range` square would pad the sides
 /// the cone doesn't face and mis-center the fit. Instead the arc is *sampled*
@@ -189,8 +202,12 @@ const ARC_SAMPLE_STEP_DEG: f64 = 2.0;
 /// `direction_deg ± angle_deg / 2`, and each sample is `position + range *
 /// (cos θ, sin θ)`. Sampling avoids fiddly cardinal-crossing extrema math and
 /// stays cheap and reusable — e.g. a minimap can call it to size its world rect.
-fn content_bounds(cameras: &[MapCamera]) -> Option<(f64, f64, f64, f64)> {
-    if cameras.is_empty() {
+///
+/// A wall vertex is a literal point (unlike a camera marker's disc), so no
+/// extra padding is folded in for it — the wall's stroke width is visually
+/// negligible for bounds purposes.
+fn content_bounds(cameras: &[MapCamera], walls: &[MapWall]) -> Option<(f64, f64, f64, f64)> {
+    if cameras.is_empty() && walls.is_empty() {
         return None;
     }
 
@@ -229,6 +246,12 @@ fn content_bounds(cameras: &[MapCamera]) -> Option<(f64, f64, f64, f64)> {
                 break;
             }
             deg += ARC_SAMPLE_STEP_DEG;
+        }
+    }
+
+    for wall in walls {
+        for vertex in &wall.vertices {
+            fold(vertex.x as f64, vertex.y as f64);
         }
     }
 
@@ -304,8 +327,7 @@ enum DragPreview {
 
 /// The active editing tool. `Select` is the default/neutral tool (click to
 /// select, drag to move/pan); other variants arm a placement/drawing
-/// interaction. More variants (`DrawWall`, `PlaceDoor`) join this enum in
-/// later PRs — kept minimal here to only what camera placement needs today.
+/// interaction. More variants (`PlaceDoor`) may join this enum in later PRs.
 /// `pub(crate)` so `EditToolbar` can match on it directly to derive each
 /// button's active state, rather than the caller pre-computing a bool per
 /// tool.
@@ -315,6 +337,9 @@ pub(crate) enum Tool {
     Select,
     /// A camera id chosen from the picker, awaiting a placement tap.
     PlaceCamera(String),
+    /// Drawing a wall path. `vertices` accumulates world-space points as the
+    /// user clicks; nothing is committed to the map until the path finishes.
+    DrawWall { vertices: Vec<Point> },
 }
 
 /// What's currently selected in edit mode, for the contextual inspector.
@@ -365,6 +390,7 @@ pub fn MapView() -> Element {
         move_camera,
         aim_camera,
         remove_camera,
+        place_wall,
         undo,
         redo,
         can_undo,
@@ -446,9 +472,37 @@ pub fn MapView() -> Element {
         std::rc::Rc::new((observer, callback))
     });
 
-    let placed = map.as_ref().map(|m| m.cameras.clone()).unwrap_or_default();
+    // Escape cancels an in-progress wall draft (no commit — same free-cancel
+    // semantics as switching back to Select). Listened for at the document
+    // level, same shape as the `ResizeObserver` hook above: the closure and
+    // listener registration are kept alive together in component state for
+    // the component's lifetime.
+    let _keydown_listener = use_hook(|| {
+        let callback = Closure::<dyn FnMut(web_sys::Event)>::new(move |evt: web_sys::Event| {
+            if let Ok(evt) = evt.dyn_into::<web_sys::KeyboardEvent>()
+                && evt.key() == "Escape"
+                && matches!(*tool.read(), Tool::DrawWall { .. })
+            {
+                tool.set(Tool::Select);
+            }
+        });
 
-    // Fit and center the placed cameras exactly once, after layout has settled.
+        if let Some(document) = web_sys::window().and_then(|w| w.document()) {
+            let _ = document
+                .add_event_listener_with_callback("keydown", callback.as_ref().unchecked_ref());
+        }
+
+        // Keep the closure alive for the component's lifetime, same rationale
+        // as the `ResizeObserver` hook: dropping it would invalidate the
+        // registered listener's callback.
+        std::rc::Rc::new(callback)
+    });
+
+    let placed = map.as_ref().map(|m| m.cameras.clone()).unwrap_or_default();
+    let placed_walls = map.as_ref().map(|m| m.walls.clone()).unwrap_or_default();
+
+    // Fit and center the placed cameras and walls exactly once, after layout
+    // has settled.
     //
     // On a hard / deep-link load the map data can arrive before the first styled
     // layout settles, so measuring synchronously here would fit against a
@@ -458,24 +512,29 @@ pub fn MapView() -> Element {
     // one to be safe), so the fit always uses the settled size. `fitted` still
     // locks it to a single fit (now the correct one) and never fights later user
     // pan/zoom; an empty map keeps the default viewport. `use_reactive` re-runs
-    // this when the cameras change (map load); guard reads use `peek` so the
-    // effect depends only on `placed`.
-    use_effect(use_reactive((&placed,), move |(placed,)| {
-        if *fitted.peek() || placed.is_empty() {
-            return;
-        }
-        after_next_layout(move || {
-            let Some((_, _, width, height)) = canvas_frame_rect() else {
+    // this when the cameras or walls change (map load); guard reads use `peek`
+    // so the effect depends only on `placed`/`placed_walls`.
+    use_effect(use_reactive(
+        (&placed, &placed_walls),
+        move |(placed, placed_walls)| {
+            if *fitted.peek() || (placed.is_empty() && placed_walls.is_empty()) {
                 return;
-            };
-            if width > 0.0 && height > 0.0 && !*fitted.peek() {
-                if let Some(bounds) = content_bounds(&placed) {
+            }
+            after_next_layout(move || {
+                let Some((_, _, width, height)) = canvas_frame_rect() else {
+                    return;
+                };
+                if width > 0.0
+                    && height > 0.0
+                    && !*fitted.peek()
+                    && let Some(bounds) = content_bounds(&placed, &placed_walls)
+                {
                     viewport.set(Viewport::fit_to_content(bounds, width, height));
                     fitted.set(true);
                 }
-            }
-        });
-    }));
+            });
+        },
+    ));
 
     // Resolve a placed camera's display name, or `None` when its reference is an
     // orphan (underlying camera deleted).
@@ -518,10 +577,15 @@ pub fn MapView() -> Element {
         })
         .collect();
 
+    // Existing walls can't be edited in this PR, so unlike `display_cameras`
+    // there's no preview overlay to apply — just the stored walls as-is.
+    let display_walls: Vec<MapWall> = placed_walls.clone();
+
     let transform = viewport.read().transform();
     let selected_camera_id = selection.read().clone().map(|Selection::Camera(id)| id);
     let is_editing = *editing.read();
     let is_placing = matches!(*tool.read(), Tool::PlaceCamera(_));
+    let is_drawing_wall = matches!(*tool.read(), Tool::DrawWall { .. });
     let gesture_label = gesture.read().label();
 
     // The currently selected camera (after preview), for the inspector.
@@ -567,7 +631,7 @@ pub fn MapView() -> Element {
     // content, so there is nothing off-screen to navigate to).
     let (canvas_w, canvas_h) = *canvas_size.read();
     let minimap_data = if canvas_w > 0.0 && canvas_h > 0.0 {
-        content_bounds(&display_cameras).and_then(|content| {
+        content_bounds(&display_cameras, &display_walls).and_then(|content| {
             let vp = *viewport.read();
             let (vmin_x, vmin_y) = vp.screen_to_world(0.0, 0.0);
             let (vmax_x, vmax_y) = vp.screen_to_world(canvas_w, canvas_h);
@@ -589,7 +653,7 @@ pub fn MapView() -> Element {
     let zoom_percent = {
         let zoom = viewport.read().zoom;
         let fit_zoom = if canvas_w > 0.0 && canvas_h > 0.0 {
-            content_bounds(&display_cameras)
+            content_bounds(&display_cameras, &display_walls)
                 .map(|bounds| Viewport::fit_to_content(bounds, canvas_w, canvas_h).zoom)
         } else {
             None
@@ -662,6 +726,7 @@ pub fn MapView() -> Element {
                 svg {
                     class: "map-canvas",
                     "data-placing": is_placing,
+                    "data-drawing-wall": is_drawing_wall,
                     "data-gesture": gesture_label,
                     xmlns: "http://www.w3.org/2000/svg",
                     // Touch-action none lets us own panning/pinching instead of
@@ -695,6 +760,34 @@ pub fn MapView() -> Element {
                         });
                         tool.set(Tool::Select);
                         selection.set(Some(Selection::Camera(camera_id)));
+                        return;
+                    }
+                    if let Tool::DrawWall { mut vertices } = pending {
+                        let (wx, wy) = viewport.read().screen_to_world(cx, cy);
+                        let world_point = Point { x: wx.round() as i32, y: wy.round() as i32 };
+
+                        // Close-loop hit-test: only meaningful once there's an
+                        // actual loop to close (need >= 3 vertices before
+                        // "closing" makes geometric sense — with fewer points
+                        // it would just double back on itself).
+                        if vertices.len() >= 3 {
+                            let (v0_sx, v0_sy) = viewport
+                                .read()
+                                .world_to_screen(vertices[0].x as f64, vertices[0].y as f64);
+                            if distance(cx, cy, v0_sx, v0_sy) <= CLOSE_LOOP_HIT_RADIUS_PX {
+                                place_wall(MapWall {
+                                    id: uuid::Uuid::new_v4().to_string(),
+                                    vertices,
+                                    closed: true,
+                                    color: WallColor::default(),
+                                });
+                                tool.set(Tool::Select);
+                                return;
+                            }
+                        }
+
+                        vertices.push(world_point);
+                        tool.set(Tool::DrawWall { vertices });
                         return;
                     }
                     if is_editing {
@@ -808,6 +901,45 @@ pub fn MapView() -> Element {
                 },
                 onpointerleave: move |_| {
                     cursor_pos.set(None);
+                },
+
+                // --- Finish an open wall path (double-click) ---
+                ondoubleclick: move |_| {
+                    let Tool::DrawWall { mut vertices } = tool.read().clone() else { return; };
+
+                    // A double-click is physically two separate clicks in quick
+                    // succession, both of which already ran through
+                    // onpointerdown above and each pushed a vertex at
+                    // (approximately) the same point. Drop that trailing
+                    // duplicate so finishing a path doesn't leave a spurious
+                    // extra vertex at the exact spot the user double-clicked.
+                    if vertices.len() >= 2 {
+                        let last = vertices.len() - 1;
+                        let d = distance(
+                            vertices[last].x as f64,
+                            vertices[last].y as f64,
+                            vertices[last - 1].x as f64,
+                            vertices[last - 1].y as f64,
+                        );
+                        // A tight world-space threshold is fine here (not
+                        // screen-space, unlike the close-loop check) since both
+                        // points came from clicks at essentially the same
+                        // pixel, just possibly rounded to different whole
+                        // centimeters.
+                        if d < 5.0 {
+                            vertices.pop();
+                        }
+                    }
+
+                    if vertices.len() >= 2 {
+                        place_wall(MapWall {
+                            id: uuid::Uuid::new_v4().to_string(),
+                            vertices,
+                            closed: false,
+                            color: WallColor::default(),
+                        });
+                    }
+                    tool.set(Tool::Select);
                 },
 
                 // --- Touch pinch zoom ---
@@ -940,7 +1072,91 @@ pub fn MapView() -> Element {
                             }
                         }
                     }
+
+                    for wall in display_walls.iter().cloned() {
+                        MapWallPath { key: "{wall.id}", wall }
                     }
+
+                    // --- In-progress wall draft ---
+                    // Rendered here (inside the world-space group) so it pans
+                    // and zooms with everything else. No selection/editing of
+                    // finished walls yet — this is purely the live-drawing
+                    // preview for the active `Tool::DrawWall` draft.
+                    if let Tool::DrawWall { vertices } = &*tool.read() {
+                        // Committed segments so far: a plain open polyline,
+                        // never closed while still drafting.
+                        if vertices.len() >= 2 {
+                            {
+                                let mut parts = Vec::with_capacity(vertices.len());
+                                for (i, v) in vertices.iter().enumerate() {
+                                    let cmd = if i == 0 { "M" } else { "L" };
+                                    parts.push(format!("{cmd} {} {}", v.x, v.y));
+                                }
+                                let d = parts.join(" ");
+                                rsx! {
+                                    path { class: "map-wall-draft__path", d: "{d}" }
+                                }
+                            }
+                        }
+
+                        // Rubber-band segment from the last committed vertex to
+                        // the live cursor position, derived from `cursor_pos`
+                        // (reused rather than tracked separately).
+                        if let (Some(last), Some((cx, cy))) = (vertices.last(), *cursor_pos.read())
+                        {
+                            {
+                                let (wx, wy) = viewport.read().screen_to_world(cx, cy);
+                                rsx! {
+                                    line {
+                                        class: "map-wall-draft__rubber-band",
+                                        x1: "{last.x}",
+                                        y1: "{last.y}",
+                                        x2: "{wx}",
+                                        y2: "{wy}",
+                                    }
+                                }
+                            }
+                        }
+
+                        // A small dot at each committed vertex.
+                        for (i , v) in vertices.iter().enumerate() {
+                            circle {
+                                key: "{i}",
+                                class: "map-wall-draft__vertex",
+                                cx: "{v.x}",
+                                cy: "{v.y}",
+                                r: "{MARKER_RADIUS_CM * 0.3}",
+                            }
+                        }
+
+                        // Once there are enough vertices to close a loop,
+                        // highlight the first vertex as the close-loop target,
+                        // with a hover affordance once the cursor is actually
+                        // within the auto-close hit radius (same threshold the
+                        // pointerdown handler uses to commit the close).
+                        if vertices.len() >= 3
+                            && let Some(first) = vertices.first()
+                        {
+                            {
+                                let in_range = cursor_pos.read().is_some_and(|(cx, cy)| {
+                                    let (v0_sx, v0_sy) = viewport
+                                        .read()
+                                        .world_to_screen(first.x as f64, first.y as f64);
+                                    distance(cx, cy, v0_sx, v0_sy) <= CLOSE_LOOP_HIT_RADIUS_PX
+                                });
+                                rsx! {
+                                    circle {
+                                        class: "map-wall-draft__close-target",
+                                        "data-in-range": in_range,
+                                        cx: "{first.x}",
+                                        cy: "{first.y}",
+                                        r: "{MARKER_RADIUS_CM}",
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 }
 
                 // --- Coordinate readout (any placement tool) ---
@@ -1012,6 +1228,23 @@ pub fn MapView() -> Element {
                         on_add_camera: move |_| {
                             tool.set(Tool::Select);
                             picker_open.set(true);
+                        },
+                        on_draw_wall: move |_| {
+                            tool.set(Tool::DrawWall { vertices: Vec::new() });
+                            picker_open.set(false);
+                        },
+                        on_finish_wall: move |_| {
+                            if let Tool::DrawWall { vertices } = tool.read().clone()
+                                && vertices.len() >= 2
+                            {
+                                place_wall(MapWall {
+                                    id: uuid::Uuid::new_v4().to_string(),
+                                    vertices,
+                                    closed: false,
+                                    color: WallColor::default(),
+                                });
+                            }
+                            tool.set(Tool::Select);
                         },
                     }
                 }
@@ -1085,7 +1318,7 @@ pub fn MapView() -> Element {
                 },
                 on_reset_zoom: move |_| {
                     let (cw, ch) = *canvas_size.read();
-                    if let Some(bounds) = content_bounds(&display_cameras) {
+                    if let Some(bounds) = content_bounds(&display_cameras, &display_walls) {
                         viewport.set(Viewport::fit_to_content(bounds, cw, ch));
                     }
                 },

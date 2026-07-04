@@ -1130,15 +1130,29 @@ pub fn MapView() -> Element {
                         }
 
                         // Once there are enough vertices to close a loop,
-                        // highlight the first vertex as the close-loop target.
+                        // highlight the first vertex as the close-loop target,
+                        // with a hover affordance once the cursor is actually
+                        // within the auto-close hit radius (same threshold the
+                        // pointerdown handler uses to commit the close).
                         if vertices.len() >= 3
                             && let Some(first) = vertices.first()
                         {
-                            circle {
-                                class: "map-wall-draft__close-target",
-                                cx: "{first.x}",
-                                cy: "{first.y}",
-                                r: "{MARKER_RADIUS_CM}",
+                            {
+                                let in_range = cursor_pos.read().is_some_and(|(cx, cy)| {
+                                    let (v0_sx, v0_sy) = viewport
+                                        .read()
+                                        .world_to_screen(first.x as f64, first.y as f64);
+                                    distance(cx, cy, v0_sx, v0_sy) <= CLOSE_LOOP_HIT_RADIUS_PX
+                                });
+                                rsx! {
+                                    circle {
+                                        class: "map-wall-draft__close-target",
+                                        "data-in-range": in_range,
+                                        cx: "{first.x}",
+                                        cy: "{first.y}",
+                                        r: "{MARKER_RADIUS_CM}",
+                                    }
+                                }
                             }
                         }
                     }

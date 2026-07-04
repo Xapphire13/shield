@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 use dioxus_free_icons::Icon;
-use dioxus_free_icons::icons::ld_icons::{LdCheck, LdMinus, LdMousePointer, LdVideo, LdX};
+use dioxus_free_icons::icons::ld_icons::{LdBrickWall, LdCheck, LdMousePointer, LdVideo, LdX};
 use shield_models::Camera;
 
 use crate::components::map::map_view::Tool;
@@ -60,7 +60,7 @@ pub fn EditToolbar(
                 "data-active": wall_active,
                 title: "Draw wall",
                 onclick: move |_| on_draw_wall(()),
-                Icon { width: 20, height: 20, icon: LdMinus }
+                Icon { width: 20, height: 20, icon: LdBrickWall }
             }
             if can_finish_wall {
                 button {

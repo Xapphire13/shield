@@ -37,7 +37,8 @@ pub fn EditToolbar(
 ) -> Element {
     let camera_active = camera_picker_open || matches!(active_tool, Tool::PlaceCamera(_));
     let wall_active = matches!(active_tool, Tool::DrawWall { .. });
-    let can_finish_wall = matches!(&active_tool, Tool::DrawWall { vertices } if vertices.len() >= 2);
+    let can_finish_wall =
+        matches!(&active_tool, Tool::DrawWall { vertices } if vertices.len() >= 2);
     rsx! {
         div { class: "edit-toolbar",
             button {

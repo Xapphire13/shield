@@ -1072,7 +1072,6 @@ pub fn MapView() -> Element {
                             }
                         }
                     }
-                    }
 
                     for wall in display_walls.iter().cloned() {
                         MapWallPath { key: "{wall.id}", wall }
@@ -1143,6 +1142,7 @@ pub fn MapView() -> Element {
                             }
                         }
                     }
+                }
                 }
 
                 // --- Coordinate readout (any placement tool) ---

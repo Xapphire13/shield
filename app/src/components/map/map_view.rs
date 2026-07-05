@@ -1512,20 +1512,32 @@ pub fn MapView() -> Element {
                 }
                 }
 
-                // --- Coordinate readout (any placement tool) ---
+                // --- Coordinate readout (placement tools and vertex drags) ---
                 // Follows the pointer, offset slightly so the label doesn't sit
-                // directly under the cursor/finger. Hidden whenever the Select
-                // tool is active or the pointer is outside the canvas.
-                if !matches!(*tool.read(), Tool::Select)
-                    && let Some((cx, cy)) = *cursor_pos.read()
-                {
+                // directly under the cursor/finger. Shown while a placement
+                // tool is armed, and while dragging an existing camera, wall
+                // vertex, or door endpoint (using the same previewed position
+                // the canvas is rendering, not a fresh screen-to-world lookup,
+                // so the readout always matches what's on screen).
+                if let Some((cx, cy)) = *cursor_pos.read() {
                     {
-                        let (wx, wy) = viewport.read().screen_to_world(cx, cy);
+                        let coords = drag_preview.read().dragged_vertex_position()
+                            .map(|position| (position.x, position.y))
+                            .or_else(|| {
+                                if matches!(*tool.read(), Tool::Select) {
+                                    None
+                                } else {
+                                    let (wx, wy) = viewport.read().screen_to_world(cx, cy);
+                                    Some((wx.round() as i32, wy.round() as i32))
+                                }
+                            });
                         rsx! {
-                            div {
-                                class: "map-coord-readout",
-                                style: "left: {cx + 14.0}px; top: {cy + 14.0}px;",
-                                "{wx.round() as i32}, {wy.round() as i32} cm",
+                            if let Some((wx, wy)) = coords {
+                                div {
+                                    class: "map-coord-readout",
+                                    style: "left: {cx + 14.0}px; top: {cy + 14.0}px;",
+                                    "{wx}, {wy} cm",
+                                }
                             }
                         }
                     }
@@ -1774,6 +1786,18 @@ impl DragPreview {
                 position,
             } if id == door_id && *w == which => Some(position.clone()),
             _ => None,
+        }
+    }
+
+    /// The previewed world-space position of whichever vertex is being
+    /// dragged (camera, wall vertex, or door endpoint), if any. `None` for FOV
+    /// previews (aim/range), which don't move a point.
+    fn dragged_vertex_position(&self) -> Option<Point> {
+        match self {
+            DragPreview::Position { position, .. }
+            | DragPreview::WallVertex { position, .. }
+            | DragPreview::DoorEndpoint { position, .. } => Some(position.clone()),
+            DragPreview::Fov { .. } | DragPreview::None => None,
         }
     }
 }

@@ -77,6 +77,12 @@ const WHEEL_ZOOM_STEP: f64 = 0.0015;
 /// within `MIN_ZOOM`/`MAX_ZOOM`.
 const BUTTON_ZOOM_STEP: f64 = 1.2;
 
+/// Target on-screen size (pixels) for a grid square. [`Viewport::grid_spacing_cm`]
+/// picks the world-space spacing that keeps squares at or just above this size,
+/// so grid density stays legible across the whole `MIN_ZOOM`/`MAX_ZOOM` range
+/// instead of turning to mush when zoomed out or ballooning when zoomed in.
+const TARGET_GRID_SCREEN_PX: f64 = 40.0;
+
 /// Smallest range a camera cone may be dragged to (centimeters).
 const MIN_RANGE_CM: i32 = 50;
 
@@ -156,6 +162,15 @@ impl Viewport {
         )
     }
 
+    /// World-space grid spacing (centimeters) that keeps grid squares at or
+    /// just above [`TARGET_GRID_SCREEN_PX`] on screen at the current zoom, so
+    /// the grid steps up/down through "nice" 1-2-5 values (…, 1m, 2m, 5m,
+    /// 10m, …) instead of squares shrinking to mush or ballooning as the user
+    /// zooms.
+    fn grid_spacing_cm(&self) -> f64 {
+        nice_step_at_least(TARGET_GRID_SCREEN_PX / self.zoom)
+    }
+
     /// A viewport that fits the world-space rectangle `(min_x, min_y, max_x,
     /// max_y)` centered within a canvas of `canvas_w` x `canvas_h` pixels.
     ///
@@ -179,6 +194,25 @@ impl Viewport {
             zoom,
         }
     }
+}
+
+/// Smallest value from the repeating 1-2-5 sequence (…, 1, 2, 5, 10, 20, 50,
+/// 100, …) that is `>= min`. `min <= 0.0` degenerates to `1.0` since the
+/// sequence has no smallest positive member.
+///
+/// The trailing `10.0` candidate (in addition to `1.0`/`2.0`/`5.0` scaled by
+/// `base`) guards against floating-point log/pow round-trip error landing
+/// `base` one power of ten low (e.g. for `min` exactly on a power of ten).
+fn nice_step_at_least(min: f64) -> f64 {
+    if min <= 0.0 {
+        return 1.0;
+    }
+    let base = 10f64.powf(min.log10().floor());
+    [1.0, 2.0, 5.0, 10.0]
+        .into_iter()
+        .map(|mult| base * mult)
+        .find(|&candidate| candidate >= min)
+        .expect("10.0 * base always satisfies base * 10.0 >= min")
 }
 
 /// Fraction of the canvas the fitted content fills, leaving a margin around it.
@@ -714,6 +748,7 @@ pub fn MapView() -> Element {
         .collect();
 
     let transform = viewport.read().transform();
+    let grid_spacing_cm = viewport.read().grid_spacing_cm();
     let selected_camera_id = selection.read().clone().and_then(|s| match s {
         Selection::Camera(id) => Some(id),
         _ => None,
@@ -1242,18 +1277,28 @@ pub fn MapView() -> Element {
                     }
                 },
 
-                // Faint grid backdrop (screen-fixed) to hint at the surface.
+                // Faint grid backdrop, stepped through "nice" 1-2-5 world-space
+                // spacings (see `nice_step_at_least`) so squares stay legible
+                // instead of shrinking to mush when zoomed out or ballooning when
+                // zoomed in. The pattern tile is defined in world (cm) units and
+                // carries the same pan/zoom transform as the content group below,
+                // so grid lines stay locked to whole world coordinates as the
+                // user pans/zooms. `vector-effect: non-scaling-stroke` keeps the
+                // line itself a constant 1 screen pixel regardless of that
+                // transform's scale, so it stays visible at every zoom level.
                 defs {
                     pattern {
                         id: "map-grid",
-                        width: "32",
-                        height: "32",
+                        width: "{grid_spacing_cm}",
+                        height: "{grid_spacing_cm}",
                         "patternUnits": "userSpaceOnUse",
+                        "patternTransform": "{transform}",
                         path {
-                            d: "M 32 0 L 0 0 0 32",
+                            d: "M {grid_spacing_cm} 0 L 0 0 0 {grid_spacing_cm}",
                             fill: "none",
                             stroke: "#2a2f3e",
                             "stroke-width": "1",
+                            "vector-effect": "non-scaling-stroke",
                         }
                     }
                 }
@@ -1774,6 +1819,48 @@ impl DragPreview {
                 position,
             } if id == door_id && *w == which => Some(position.clone()),
             _ => None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn nice_step_at_least_picks_smallest_covering_1_2_5_value() {
+        assert_eq!(nice_step_at_least(1.0), 1.0);
+        assert_eq!(nice_step_at_least(1.5), 2.0);
+        assert_eq!(nice_step_at_least(2.0), 2.0);
+        assert_eq!(nice_step_at_least(3.0), 5.0);
+        assert_eq!(nice_step_at_least(50.0), 50.0);
+        assert_eq!(nice_step_at_least(51.0), 100.0);
+        assert_eq!(nice_step_at_least(8.0), 10.0);
+        assert_eq!(nice_step_at_least(2000.0), 2000.0);
+    }
+
+    #[test]
+    fn nice_step_at_least_handles_non_positive_input() {
+        assert_eq!(nice_step_at_least(0.0), 1.0);
+        assert_eq!(nice_step_at_least(-5.0), 1.0);
+    }
+
+    #[test]
+    fn grid_spacing_cm_keeps_squares_at_or_above_target_size_across_zoom_range() {
+        let mut zoom = MIN_ZOOM;
+        while zoom <= MAX_ZOOM {
+            let viewport = Viewport {
+                pan_x: 0.0,
+                pan_y: 0.0,
+                zoom,
+            };
+            let spacing = viewport.grid_spacing_cm();
+            let on_screen_px = spacing * zoom;
+            assert!(
+                on_screen_px >= TARGET_GRID_SCREEN_PX,
+                "zoom {zoom}: spacing {spacing} cm -> {on_screen_px} px, below target"
+            );
+            zoom *= 1.7;
         }
     }
 }

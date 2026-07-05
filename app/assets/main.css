@@ -532,20 +532,29 @@ ul {
 }
 
 /* A placed wall/fence. Placeholder stroke color pending the real WallColor
-   palette (a later PR). `pointer-events: stroke` widens the clickable area to
-   the full rendered stroke width (an SVG path with fill:none otherwise only
-   registers pointer events exactly on the infinitely-thin center line),
-   which combined with the existing stroke-width makes it comfortably
-   clickable without needing a separate invisible hit-target layer. */
+   palette (a later PR). Purely decorative — `pointer-events: none`, since the
+   invisible `.map-wall__hit-area` (below) owns clicking. Its width is in
+   world-space cm, so it scales with zoom like the wall's true footprint. */
 .map-wall__stroke {
     stroke: var(--color-border-strong);
     stroke-width: 6;
     stroke-linecap: round;
     stroke-linejoin: round;
+    pointer-events: none;
+}
+
+/* Invisible click target, layered over the visible stroke. A constant
+   screen-pixel width (`non-scaling-stroke`) rather than the visible stroke's
+   world-space width, so the wall stays comfortably clickable even when
+   zoomed out far enough to shrink the visible line to a sliver. */
+.map-wall__hit-area {
+    stroke: transparent;
+    stroke-width: 20px;
+    vector-effect: non-scaling-stroke;
     pointer-events: stroke;
 }
 
-.map-wall[data-editing="true"] .map-wall__stroke {
+.map-wall[data-editing="true"] .map-wall__hit-area {
     cursor: pointer;
 }
 

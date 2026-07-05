@@ -640,6 +640,10 @@ pub fn MapView() -> Element {
     let is_editing = *editing.read();
     let is_placing = matches!(*tool.read(), Tool::PlaceCamera(_));
     let is_drawing_wall = matches!(*tool.read(), Tool::DrawWall { .. });
+    // Walls are only selectable/draggable with the Select tool active — not
+    // just "in edit mode" — so an armed placement/drawing tool doesn't also
+    // let clicks land on an existing wall underneath it.
+    let walls_selectable = is_editing && matches!(*tool.read(), Tool::Select);
     let gesture_label = gesture.read().label();
 
     // The currently selected camera (after preview), for the inspector.
@@ -1185,7 +1189,7 @@ pub fn MapView() -> Element {
                                     key: "{id}",
                                     wall,
                                     selected: is_selected,
-                                    editing: is_editing,
+                                    editing: walls_selectable,
                                     on_path_pointer_down: {
                                         let id = id.clone();
                                         move |_evt: Event<PointerData>| {

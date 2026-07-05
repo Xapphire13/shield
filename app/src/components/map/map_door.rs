@@ -1,6 +1,20 @@
 use dioxus::prelude::*;
 use shield_models::{DoorSwing, MapDoor};
 
+/// Radius (in logical cm) of a door endpoint drag handle, shown only once the
+/// door is selected. Sized consistently with `map_wall.rs`'s
+/// `VERTEX_HANDLE_RADIUS_CM`.
+const ENDPOINT_HANDLE_RADIUS_CM: f64 = 18.0;
+
+/// Which endpoint of a [`MapDoor`] is being referenced/dragged. A door has
+/// exactly two named endpoints (unlike a wall's arbitrary-length vertex
+/// list), so this is a small enum rather than an index.
+#[derive(Clone, Copy, PartialEq)]
+pub enum Endpoint {
+    Start,
+    End,
+}
+
 /// Renders a single placed [`MapDoor`] as a standard architectural door
 /// swing symbol: a straight line across the opening (`start`..`end`, the
 /// same width the door occupies in a wall gap the user left) plus a
@@ -9,19 +23,73 @@ use shield_models::{DoorSwing, MapDoor};
 /// [`MapCameraMarker`](super::map_camera::MapCameraMarker) /
 /// [`MapWallPath`](super::map_wall::MapWallPath).
 ///
-/// No selection/editing support yet (lands in a later PR) — this just draws
-/// the shape, always with a fixed default swing until then.
+/// Selectable via a pointer-down on an invisible, constant-width hit area
+/// layered over the (purely decorative, world-scaled) opening line — see
+/// `.map-door__hit-area` in `main.css`, same technique `MapWallPath` uses.
+/// Once selected (and in edit mode) each endpoint gets an on-canvas drag
+/// handle for reshaping / repositioning it. There is no whole-door drag —
+/// only individual endpoints move, same "select-only on body, drag only via
+/// named handles" pattern `MapWallPath` established for walls.
 #[component]
-pub fn MapDoorMarker(door: MapDoor) -> Element {
+pub fn MapDoorMarker(
+    door: MapDoor,
+    /// Whether this door is the current selection (shows endpoint handles +
+    /// emphasis).
+    #[props(default)]
+    selected: bool,
+    /// Whether the map is in edit mode. Reserved for edit-mode-vs-view-mode
+    /// styling; whether the door actually responds to a pointer-down is
+    /// `interactive`, not this.
+    #[props(default)]
+    editing: bool,
+    /// Whether this door currently responds to a pointer-down (select) and
+    /// shows its endpoint handles when selected. Distinct from `editing`:
+    /// false while edit mode is on but a different tool is armed or a
+    /// placement picker is open, even though `editing` is still true —
+    /// without this, the door would stay clickable underneath an unrelated
+    /// tool (same fix `MapWallPath`/`MapCameraMarker` already have).
+    #[props(default)]
+    interactive: bool,
+    /// Fired on pointer-down on the opening line's hit area. The host uses
+    /// this to select the door.
+    #[props(default)]
+    on_body_pointer_down: Option<Callback<Event<PointerData>>>,
+    /// Fired on pointer-down on an endpoint handle, with which endpoint. The
+    /// host uses this to start a per-endpoint drag.
+    #[props(default)]
+    on_endpoint_pointer_down: Option<Callback<(Endpoint, Event<PointerData>)>>,
+) -> Element {
     let (open_x, open_y) = swing_open_point(&door);
     rsx! {
-        g { class: "map-door",
+        g {
+            class: "map-door",
+            "data-selected": selected,
+            "data-editing": editing,
+            "data-interactive": interactive,
             line {
                 class: "map-door__opening",
                 x1: "{door.start.x}",
                 y1: "{door.start.y}",
                 x2: "{door.end.x}",
                 y2: "{door.end.y}",
+            }
+            // Invisible, constant-width click target layered over the visible
+            // opening line — see `.map-door__hit-area` for why this is
+            // separate from the (world-scaled, purely decorative) line above.
+            line {
+                class: "map-door__hit-area",
+                x1: "{door.start.x}",
+                y1: "{door.start.y}",
+                x2: "{door.end.x}",
+                y2: "{door.end.y}",
+                onpointerdown: move |evt: Event<PointerData>| {
+                    if interactive {
+                        evt.stop_propagation();
+                        if let Some(cb) = on_body_pointer_down {
+                            cb.call(evt);
+                        }
+                    }
+                },
             }
             line {
                 class: "map-door__leaf",
@@ -34,6 +102,32 @@ pub fn MapDoorMarker(door: MapDoor) -> Element {
                 class: "map-door__swing-arc",
                 d: "{swing_arc_d(&door, open_x, open_y)}",
                 fill: "none",
+            }
+            if selected && interactive {
+                circle {
+                    class: "map-door__endpoint-handle",
+                    cx: "{door.start.x}",
+                    cy: "{door.start.y}",
+                    r: "{ENDPOINT_HANDLE_RADIUS_CM}",
+                    onpointerdown: move |evt: Event<PointerData>| {
+                        evt.stop_propagation();
+                        if let Some(cb) = on_endpoint_pointer_down {
+                            cb.call((Endpoint::Start, evt));
+                        }
+                    },
+                }
+                circle {
+                    class: "map-door__endpoint-handle",
+                    cx: "{door.end.x}",
+                    cy: "{door.end.y}",
+                    r: "{ENDPOINT_HANDLE_RADIUS_CM}",
+                    onpointerdown: move |evt: Event<PointerData>| {
+                        evt.stop_propagation();
+                        if let Some(cb) = on_endpoint_pointer_down {
+                            cb.call((Endpoint::End, evt));
+                        }
+                    },
+                }
             }
         }
     }

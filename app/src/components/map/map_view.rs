@@ -640,13 +640,14 @@ pub fn MapView() -> Element {
     let is_editing = *editing.read();
     let is_placing = matches!(*tool.read(), Tool::PlaceCamera(_));
     let is_drawing_wall = matches!(*tool.read(), Tool::DrawWall { .. });
-    // Walls are only selectable/draggable with the Select tool active and no
-    // placement picker open — not just "in edit mode". `tool` alone isn't
-    // enough: picking a camera from `CameraPicker` doesn't arm
-    // `Tool::PlaceCamera` until a camera is actually chosen, so `tool` still
-    // reads `Select` for the entire time the picker sheet is up, and without
-    // this check walls stay clickable underneath it.
-    let walls_selectable =
+    // Placed elements (cameras, walls) are only selectable/draggable with the
+    // Select tool active and no placement picker open — not just "in edit
+    // mode". `tool` alone isn't enough: picking a camera from `CameraPicker`
+    // doesn't arm `Tool::PlaceCamera` until a camera is actually chosen, so
+    // `tool` still reads `Select` for the entire time the picker sheet is up,
+    // and without this check elements stay clickable underneath it or
+    // underneath an unrelated in-progress placement/drawing tool.
+    let elements_selectable =
         is_editing && matches!(*tool.read(), Tool::Select) && !*picker_open.read();
     let gesture_label = gesture.read().label();
 
@@ -1119,7 +1120,7 @@ pub fn MapView() -> Element {
                                     key: "{id}",
                                     camera,
                                     selected: is_selected,
-                                    editing: is_editing,
+                                    editing: elements_selectable,
                                     orphaned,
                                     on_body_pointer_down: {
                                         let id = id.clone();
@@ -1193,7 +1194,7 @@ pub fn MapView() -> Element {
                                     key: "{id}",
                                     wall,
                                     selected: is_selected,
-                                    editing: walls_selectable,
+                                    editing: elements_selectable,
                                     on_path_pointer_down: {
                                         let id = id.clone();
                                         move |_evt: Event<PointerData>| {

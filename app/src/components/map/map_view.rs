@@ -640,10 +640,14 @@ pub fn MapView() -> Element {
     let is_editing = *editing.read();
     let is_placing = matches!(*tool.read(), Tool::PlaceCamera(_));
     let is_drawing_wall = matches!(*tool.read(), Tool::DrawWall { .. });
-    // Walls are only selectable/draggable with the Select tool active — not
-    // just "in edit mode" — so an armed placement/drawing tool doesn't also
-    // let clicks land on an existing wall underneath it.
-    let walls_selectable = is_editing && matches!(*tool.read(), Tool::Select);
+    // Walls are only selectable/draggable with the Select tool active and no
+    // placement picker open — not just "in edit mode". `tool` alone isn't
+    // enough: picking a camera from `CameraPicker` doesn't arm
+    // `Tool::PlaceCamera` until a camera is actually chosen, so `tool` still
+    // reads `Select` for the entire time the picker sheet is up, and without
+    // this check walls stay clickable underneath it.
+    let walls_selectable =
+        is_editing && matches!(*tool.read(), Tool::Select) && !*picker_open.read();
     let gesture_label = gesture.read().label();
 
     // The currently selected camera (after preview), for the inspector.

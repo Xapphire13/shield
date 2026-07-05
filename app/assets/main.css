@@ -645,6 +645,27 @@ ul {
     opacity: 1;
 }
 
+/* Placed door: a freestanding gap/marker, not a solid boundary — styled
+   noticeably lighter/thinner than `.map-wall__stroke` (stroke-width 6) so it
+   reads as an opening rather than a wall. No selection/editing yet (create-
+   only in this PR), so there is no `[data-selected]` variant here. */
+.map-door__opening {
+    stroke: var(--color-text-muted);
+    stroke-width: 3;
+    stroke-dasharray: 8 6;
+}
+
+.map-door__leaf {
+    stroke: var(--color-text-muted);
+    stroke-width: 3;
+}
+
+.map-door__swing-arc {
+    stroke: var(--color-text-muted);
+    stroke-width: 2;
+    stroke-dasharray: 4 4;
+}
+
 /* World-coordinate readout that follows the pointer while any placement tool
    is active. An HTML overlay (not SVG) positioned against the canvas frame,
    offset from the raw cursor point so the label doesn't sit under it. */

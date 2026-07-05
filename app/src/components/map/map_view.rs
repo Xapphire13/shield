@@ -416,6 +416,7 @@ pub fn MapView() -> Element {
         place_wall,
         update_wall_vertices,
         close_wall,
+        recolor_wall,
         remove_wall,
         undo,
         redo,
@@ -1367,6 +1368,10 @@ pub fn MapView() -> Element {
                         on_close_loop: {
                             let id = wall.id.clone();
                             move |_| close_wall(id.clone())
+                        },
+                        on_recolor: {
+                            let id = wall.id.clone();
+                            move |color| recolor_wall((id.clone(), color))
                         },
                         on_delete: {
                             let id = wall.id.clone();

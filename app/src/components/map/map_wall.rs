@@ -1,6 +1,8 @@
 use dioxus::prelude::*;
 use shield_models::MapWall;
 
+use crate::components::map::color_swatch_picker::WallColorCssExt;
+
 /// Radius (in logical cm) of a wall vertex drag handle, shown only once the
 /// wall is selected. Sized to be easy to grab without visually overwhelming
 /// the (thinner) wall stroke, similar in spirit to `MARKER_RADIUS_CM` in
@@ -15,9 +17,11 @@ const VERTEX_HANDLE_RADIUS_CM: f64 = 18.0;
 /// layered over the (purely decorative, world-scaled) visible stroke — see
 /// `.map-wall__hit-area` in `main.css`. Once selected (and in edit mode) each
 /// vertex gets an on-canvas drag handle for reshaping the path. There is no
-/// whole-wall drag — only individual vertices move. Recoloring (the real
-/// `WallColor` palette) lands in a later PR; the stroke color here is a fixed
-/// placeholder.
+/// whole-wall drag — only individual vertices move. The visible stroke's
+/// color reflects the wall's chosen [`WallColor`](shield_models::WallColor),
+/// fed in via a CSS custom property (see `.map-wall__stroke` in `main.css`)
+/// rather than an inline `stroke`, so the selection-highlight rule can still
+/// override it through normal cascade/specificity.
 #[component]
 pub fn MapWallPath(
     wall: MapWall,
@@ -53,7 +57,12 @@ pub fn MapWallPath(
             "data-selected": selected,
             "data-editing": editing,
             "data-interactive": interactive,
-            path { class: "map-wall__stroke", d: "{d}", fill: "none" }
+            path {
+                class: "map-wall__stroke",
+                d: "{d}",
+                fill: "none",
+                style: "--wall-stroke-color: var(--wall-color-{wall.color.css_name()});",
+            }
             // Invisible, constant-width click target layered over the visible
             // stroke — see `.map-wall__hit-area` for why this is separate
             // from the (world-scaled, purely decorative) stroke above.

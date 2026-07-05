@@ -76,7 +76,7 @@ pub struct MapWall {
 /// A curated, closed color palette for walls/fences (not an arbitrary hex
 /// value), so the UI can offer a fixed swatch picker and the server can
 /// validate for free.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
 pub enum WallColor {
     #[default]

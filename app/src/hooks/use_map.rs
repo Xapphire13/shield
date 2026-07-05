@@ -115,8 +115,8 @@ impl MapEdit {
             },
             MapEdit::UpdateWallColor { wall_id, from, to } => MapEdit::UpdateWallColor {
                 wall_id: wall_id.clone(),
-                from: to.clone(),
-                to: from.clone(),
+                from: *to,
+                to: *from,
             },
             MapEdit::AddDoor(door) => MapEdit::RemoveDoor(door.clone()),
             MapEdit::RemoveDoor(door) => MapEdit::AddDoor(door.clone()),
@@ -166,7 +166,7 @@ impl MapEdit {
             }
             MapEdit::UpdateWallColor { wall_id, to, .. } => {
                 if let Some(wall) = map.walls.iter_mut().find(|w| &w.id == wall_id) {
-                    wall.color = to.clone();
+                    wall.color = *to;
                 }
             }
             MapEdit::AddDoor(door) => map.doors.push(door.clone()),
@@ -233,7 +233,7 @@ impl MapEdit {
                 let update = UpdateMapWallRequest {
                     vertices: None,
                     closed: None,
-                    color: Some(to.clone()),
+                    color: Some(*to),
                 };
                 client.update_wall(map_id, wall_id, update).await
             }

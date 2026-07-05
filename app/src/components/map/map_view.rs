@@ -546,15 +546,20 @@ pub fn MapView() -> Element {
         std::rc::Rc::new((observer, callback))
     });
 
-    // Escape cancels an in-progress wall draft or door placement (no commit —
-    // same free-cancel semantics as switching back to Select). Door placement
-    // gets a two-stage cancel: the first Escape backs out of the pending
-    // second click (dropping the placed start point but staying in the tool),
-    // and a second Escape then fully exits to Select — smoother than losing
-    // the whole in-progress placement on one keypress. Listened for at the
-    // document level, same shape as the `ResizeObserver` hook above: the
-    // closure and listener registration are kept alive together in component
-    // state for the component's lifetime.
+    // Escape cancels the active placement tool (no commit — same free-cancel
+    // semantics as switching back to Select). Door placement gets a
+    // two-stage cancel: the first Escape backs out of the pending second
+    // click (dropping the placed start point but staying in the tool), and a
+    // second Escape then fully exits to Select — smoother than losing the
+    // whole in-progress placement on one keypress. Choosing a camera from the
+    // picker also arms `PlaceCamera`, so Escape backs that out to Select too;
+    // and if the picker sheet itself is still open (tool hasn't left Select
+    // yet), Escape closes it. Once back on a plain Select with nothing else
+    // to unwind, a further Escape exits edit mode entirely, mirroring the
+    // "Done" button's reset (clear selection, tool, and picker). Listened for
+    // at the document level, same shape as the `ResizeObserver` hook above:
+    // the closure and listener registration are kept alive together in
+    // component state for the component's lifetime.
     let _keydown_listener = use_hook(|| {
         let callback = Closure::<dyn FnMut(web_sys::Event)>::new(move |evt: web_sys::Event| {
             if let Ok(evt) = evt.dyn_into::<web_sys::KeyboardEvent>()
@@ -565,7 +570,12 @@ pub fn MapView() -> Element {
                     Tool::DrawWall { .. } => tool.set(Tool::Select),
                     Tool::PlaceDoor { start: Some(_) } => tool.set(Tool::PlaceDoor { start: None }),
                     Tool::PlaceDoor { start: None } => tool.set(Tool::Select),
-                    _ => {}
+                    Tool::PlaceCamera(_) => tool.set(Tool::Select),
+                    Tool::Select if *picker_open.read() => picker_open.set(false),
+                    Tool::Select => {
+                        selection.set(None);
+                        editing.set(false);
+                    }
                 }
             }
         });

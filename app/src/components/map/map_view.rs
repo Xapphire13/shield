@@ -92,6 +92,14 @@ const MIN_RANGE_CM: i32 = 50;
 /// regardless of zoom level.
 const CLOSE_LOOP_HIT_RADIUS_PX: f64 = 14.0;
 
+/// Screen-pixel radius (not world-space) within which the last two vertices
+/// of a just-finished wall draft are treated as the same double-click point
+/// (see the double-click-finish dedup below). Screen-space for the same
+/// reason as `CLOSE_LOOP_HIT_RADIUS_PX`: a world-space threshold would need
+/// to be huge at low zoom and negligible at high zoom to represent "the same
+/// physical click" either way.
+const DOUBLE_CLICK_DEDUP_RADIUS_PX: f64 = 6.0;
+
 /// Viewport transform mapping logical world coordinates (centimeters) to screen
 /// pixels: `screen = world * zoom + pan`.
 ///
@@ -249,16 +257,18 @@ fn content_bounds(
     walls: &[MapWall],
     doors: &[MapDoor],
 ) -> Option<(f64, f64, f64, f64)> {
-    if cameras.is_empty() && walls.is_empty() && doors.is_empty() {
-        return None;
-    }
-
     let mut min_x = f64::INFINITY;
     let mut min_y = f64::INFINITY;
     let mut max_x = f64::NEG_INFINITY;
     let mut max_y = f64::NEG_INFINITY;
+    // Whether `fold` has run at least once. A non-empty `walls`/`doors` slice
+    // doesn't guarantee this — a wall with no vertices contributes nothing —
+    // so this (not the slices' emptiness) is what actually determines whether
+    // there's real content to report bounds for.
+    let mut has_content = false;
 
     let mut fold = |x: f64, y: f64| {
+        has_content = true;
         min_x = min_x.min(x);
         min_y = min_y.min(y);
         max_x = max_x.max(x);
@@ -302,7 +312,7 @@ fn content_bounds(
         fold(door.end.x as f64, door.end.y as f64);
     }
 
-    Some((min_x, min_y, max_x, max_y))
+    has_content.then_some((min_x, min_y, max_x, max_y))
 }
 
 /// Whether `outer` fully contains `inner` (both `(min_x, min_y, max_x, max_y)`).
@@ -491,12 +501,12 @@ pub fn MapView() -> Element {
         aim_camera,
         remove_camera,
         place_wall,
-        update_wall_vertices,
+        move_wall_vertex,
         close_wall,
         recolor_wall,
         remove_wall,
         place_door,
-        move_door,
+        move_door_endpoint,
         flip_door_swing,
         remove_door,
         undo,
@@ -628,14 +638,6 @@ pub fn MapView() -> Element {
     let placed = map.as_ref().map(|m| m.cameras.clone()).unwrap_or_default();
     let placed_walls = map.as_ref().map(|m| m.walls.clone()).unwrap_or_default();
     let placed_doors = map.as_ref().map(|m| m.doors.clone()).unwrap_or_default();
-    // A second copy for `onpointerup`'s `MoveWallVertex` commit: `onpointermove`
-    // (below) also needs the un-previewed wall list (to seed a vertex drag's
-    // base position) and captures its copy by move, same as `placed` already
-    // does for `MoveCamera`.
-    let placed_walls_on_release = placed_walls.clone();
-    // Same rationale as `placed_walls_on_release`, for `MoveDoorEndpoint`'s
-    // commit in `onpointerup`.
-    let placed_doors_on_release = placed_doors.clone();
 
     // Fit and center the placed cameras, walls, and doors exactly once, after
     // layout has settled.
@@ -1178,25 +1180,13 @@ pub fn MapView() -> Element {
                             }
                         }
                         Gesture::MoveWallVertex { wall_id, vertex_index, .. } => {
-                            if let DragPreview::WallVertex { position, .. } = drag_preview.read().clone()
-                                && let Some(wall) = placed_walls_on_release.iter().find(|w| w.id == wall_id)
-                            {
-                                let mut vertices = wall.vertices.clone();
-                                if let Some(v) = vertices.get_mut(vertex_index) {
-                                    *v = position;
-                                }
-                                update_wall_vertices((wall_id, vertices));
+                            if let DragPreview::WallVertex { position, .. } = drag_preview.read().clone() {
+                                move_wall_vertex((wall_id, vertex_index, position));
                             }
                         }
                         Gesture::MoveDoorEndpoint { door_id, which, .. } => {
-                            if let DragPreview::DoorEndpoint { position, .. } = drag_preview.read().clone()
-                                && let Some(door) = placed_doors_on_release.iter().find(|d| d.id == door_id)
-                            {
-                                let (new_start, new_end) = match which {
-                                    Endpoint::Start => (position, door.end.clone()),
-                                    Endpoint::End => (door.start.clone(), position),
-                                };
-                                move_door((door_id, new_start, new_end));
+                            if let DragPreview::DoorEndpoint { position, .. } = drag_preview.read().clone() {
+                                move_door_endpoint((door_id, which == Endpoint::Start, position));
                             }
                         }
                         _ => {}
@@ -1224,18 +1214,21 @@ pub fn MapView() -> Element {
                     // extra vertex at the exact spot the user double-clicked.
                     if vertices.len() >= 2 {
                         let last = vertices.len() - 1;
-                        let d = distance(
-                            vertices[last].x as f64,
-                            vertices[last].y as f64,
+                        // Screen-space, not world-space: both points came from
+                        // clicks at essentially the same physical pixel, but
+                        // that maps to wildly different world-cm distances
+                        // depending on zoom (e.g. 1px is 50 world-cm at
+                        // MIN_ZOOM), so a fixed world-space threshold either
+                        // over- or under-fires depending on zoom level.
+                        let (last_sx, last_sy) = viewport
+                            .read()
+                            .world_to_screen(vertices[last].x as f64, vertices[last].y as f64);
+                        let (prev_sx, prev_sy) = viewport.read().world_to_screen(
                             vertices[last - 1].x as f64,
                             vertices[last - 1].y as f64,
                         );
-                        // A tight world-space threshold is fine here (not
-                        // screen-space, unlike the close-loop check) since both
-                        // points came from clicks at essentially the same
-                        // pixel, just possibly rounded to different whole
-                        // centimeters.
-                        if d < 5.0 {
+                        let d = distance(last_sx, last_sy, prev_sx, prev_sy);
+                        if d < DOUBLE_CLICK_DEDUP_RADIUS_PX {
                             vertices.pop();
                         }
                     }
@@ -1402,7 +1395,6 @@ pub fn MapView() -> Element {
                                     key: "{id}",
                                     wall,
                                     selected: is_selected,
-                                    editing: is_editing,
                                     interactive: elements_selectable,
                                     on_path_pointer_down: {
                                         let id = id.clone();
@@ -1436,7 +1428,6 @@ pub fn MapView() -> Element {
                                     key: "{id}",
                                     door,
                                     selected: is_selected,
-                                    editing: is_editing,
                                     interactive: elements_selectable,
                                     on_body_pointer_down: {
                                         let id = id.clone();

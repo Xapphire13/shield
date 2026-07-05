@@ -29,16 +29,10 @@ pub fn MapWallPath(
     /// emphasis).
     #[props(default)]
     selected: bool,
-    /// Whether the map is in edit mode. Reserved for edit-mode-vs-view-mode
-    /// styling; whether the path actually responds to a pointer-down is
-    /// `interactive`, not this.
-    #[props(default)]
-    editing: bool,
     /// Whether this wall currently responds to a pointer-down (select) and
-    /// shows its vertex handles when selected. Distinct from `editing`: false
-    /// while edit mode is on but a different tool is armed or a placement
-    /// picker is open, even though `editing` is still true — without this,
-    /// the wall would stay clickable underneath an unrelated tool.
+    /// shows its vertex handles when selected. False while edit mode is on
+    /// but a different tool is armed or a placement picker is open — without
+    /// this, the wall would stay clickable underneath an unrelated tool.
     #[props(default)]
     interactive: bool,
     /// Fired on pointer-down on the wall's hit area. The host uses this to
@@ -55,7 +49,6 @@ pub fn MapWallPath(
         g {
             class: "map-wall",
             "data-selected": selected,
-            "data-editing": editing,
             "data-interactive": interactive,
             path {
                 class: "map-wall__stroke",

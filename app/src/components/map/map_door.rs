@@ -37,15 +37,9 @@ pub fn MapDoorMarker(
     /// emphasis).
     #[props(default)]
     selected: bool,
-    /// Whether the map is in edit mode. Reserved for edit-mode-vs-view-mode
-    /// styling; whether the door actually responds to a pointer-down is
-    /// `interactive`, not this.
-    #[props(default)]
-    editing: bool,
     /// Whether this door currently responds to a pointer-down (select) and
-    /// shows its endpoint handles when selected. Distinct from `editing`:
-    /// false while edit mode is on but a different tool is armed or a
-    /// placement picker is open, even though `editing` is still true —
+    /// shows its endpoint handles when selected. False while edit mode is on
+    /// but a different tool is armed or a placement picker is open —
     /// without this, the door would stay clickable underneath an unrelated
     /// tool (same fix `MapWallPath`/`MapCameraMarker` already have).
     #[props(default)]
@@ -64,7 +58,6 @@ pub fn MapDoorMarker(
         g {
             class: "map-door",
             "data-selected": selected,
-            "data-editing": editing,
             "data-interactive": interactive,
             line {
                 class: "map-door__opening",
@@ -175,7 +168,7 @@ fn swing_arc_d(door: &MapDoor, open_x: f64, open_y: f64) -> String {
         DoorSwing::Right => 1,
     };
     format!(
-        "M {} {} A {radius} {radius} 0 0 {sweep} {} {}",
-        door.end.x, door.end.y, open_x, open_y
+        "M {} {} A {radius} {radius} 0 0 {sweep} {open_x} {open_y}",
+        door.end.x, door.end.y
     )
 }

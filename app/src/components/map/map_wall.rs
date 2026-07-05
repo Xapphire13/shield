@@ -1,18 +1,93 @@
 use dioxus::prelude::*;
 use shield_models::MapWall;
 
+/// Radius (in logical cm) of a wall vertex drag handle, shown only once the
+/// wall is selected. Sized to be easy to grab without visually overwhelming
+/// the (thinner) wall stroke, similar in spirit to `MARKER_RADIUS_CM` in
+/// [`map_camera`](super::map_camera).
+const VERTEX_HANDLE_RADIUS_CM: f64 = 18.0;
+
 /// Renders a single placed [`MapWall`] as an SVG path. All geometry is in
 /// logical world-space centimeters — the parent applies the pan/zoom
 /// transform, same convention as [`MapCameraMarker`](super::map_camera::MapCameraMarker).
 ///
-/// No selection/vertex-editing support yet (that lands once walls become
-/// selectable in a later PR) — this just draws the shape. The stroke color is
-/// a fixed placeholder until the real `WallColor` palette lands.
+/// Selectable via a pointer-down on an invisible, constant-width hit area
+/// layered over the (purely decorative, world-scaled) visible stroke — see
+/// `.map-wall__hit-area` in `main.css`. Once selected (and in edit mode) each
+/// vertex gets an on-canvas drag handle for reshaping the path. There is no
+/// whole-wall drag — only individual vertices move. Recoloring (the real
+/// `WallColor` palette) lands in a later PR; the stroke color here is a fixed
+/// placeholder.
 #[component]
-pub fn MapWallPath(wall: MapWall) -> Element {
+pub fn MapWallPath(
+    wall: MapWall,
+    /// Whether this wall is the current selection (shows vertex handles +
+    /// emphasis).
+    #[props(default)]
+    selected: bool,
+    /// Whether the map is in edit mode. Reserved for edit-mode-vs-view-mode
+    /// styling; whether the path actually responds to a pointer-down is
+    /// `interactive`, not this.
+    #[props(default)]
+    editing: bool,
+    /// Whether this wall currently responds to a pointer-down (select) and
+    /// shows its vertex handles when selected. Distinct from `editing`: false
+    /// while edit mode is on but a different tool is armed or a placement
+    /// picker is open, even though `editing` is still true — without this,
+    /// the wall would stay clickable underneath an unrelated tool.
+    #[props(default)]
+    interactive: bool,
+    /// Fired on pointer-down on the wall's hit area. The host uses this to
+    /// select the wall.
+    #[props(default)]
+    on_path_pointer_down: Option<Callback<Event<PointerData>>>,
+    /// Fired on pointer-down on a vertex handle, with the index of the
+    /// vertex. The host uses this to start a per-vertex drag.
+    #[props(default)]
+    on_vertex_pointer_down: Option<Callback<(usize, Event<PointerData>)>>,
+) -> Element {
     let d = wall_path_d(&wall);
     rsx! {
-        path { class: "map-wall__stroke", d: "{d}", fill: "none" }
+        g {
+            class: "map-wall",
+            "data-selected": selected,
+            "data-editing": editing,
+            "data-interactive": interactive,
+            path { class: "map-wall__stroke", d: "{d}", fill: "none" }
+            // Invisible, constant-width click target layered over the visible
+            // stroke — see `.map-wall__hit-area` for why this is separate
+            // from the (world-scaled, purely decorative) stroke above.
+            path {
+                class: "map-wall__hit-area",
+                d: "{d}",
+                fill: "none",
+                onpointerdown: move |evt: Event<PointerData>| {
+                    if interactive {
+                        evt.stop_propagation();
+                        if let Some(cb) = on_path_pointer_down {
+                            cb.call(evt);
+                        }
+                    }
+                },
+            }
+            if selected && interactive {
+                for (i , v) in wall.vertices.iter().enumerate() {
+                    circle {
+                        key: "{i}",
+                        class: "map-wall__vertex-handle",
+                        cx: "{v.x}",
+                        cy: "{v.y}",
+                        r: "{VERTEX_HANDLE_RADIUS_CM}",
+                        onpointerdown: move |evt: Event<PointerData>| {
+                            evt.stop_propagation();
+                            if let Some(cb) = on_vertex_pointer_down {
+                                cb.call((i, evt));
+                            }
+                        },
+                    }
+                }
+            }
+        }
     }
 }
 

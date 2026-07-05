@@ -1120,7 +1120,8 @@ pub fn MapView() -> Element {
                                     key: "{id}",
                                     camera,
                                     selected: is_selected,
-                                    editing: elements_selectable,
+                                    editing: is_editing,
+                                    interactive: elements_selectable,
                                     orphaned,
                                     on_body_pointer_down: {
                                         let id = id.clone();
@@ -1194,7 +1195,8 @@ pub fn MapView() -> Element {
                                     key: "{id}",
                                     wall,
                                     selected: is_selected,
-                                    editing: elements_selectable,
+                                    editing: is_editing,
+                                    interactive: elements_selectable,
                                     on_path_pointer_down: {
                                         let id = id.clone();
                                         move |_evt: Event<PointerData>| {

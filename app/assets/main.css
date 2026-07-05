@@ -459,8 +459,11 @@ ul {
     vector-effect: non-scaling-stroke;
 }
 
-/* Interactive markers can be repositioned in edit mode. */
-.map-camera[data-editing="true"] .map-camera__marker {
+/* Interactive markers can be repositioned. Keyed on `data-interactive`, not
+   `data-editing` — edit mode alone isn't enough, since a marker stays inert
+   (no drag affordance) while a different tool is armed or a picker is open,
+   even though the map is still in edit mode. */
+.map-camera[data-interactive="true"] .map-camera__marker {
     cursor: move;
 }
 
@@ -554,7 +557,10 @@ ul {
     pointer-events: stroke;
 }
 
-.map-wall[data-editing="true"] .map-wall__hit-area {
+/* Keyed on `data-interactive`, not `data-editing` — a wall stays inert (no
+   pointer affordance) while a different tool is armed or a picker is open,
+   even though the map is still in edit mode. */
+.map-wall[data-interactive="true"] .map-wall__hit-area {
     cursor: pointer;
 }
 

@@ -29,10 +29,19 @@ pub fn MapCameraMarker(
     /// Whether this camera is the current selection (shows handles + emphasis).
     #[props(default)]
     selected: bool,
-    /// Whether the map is in edit mode (enables interaction). Outside edit mode
-    /// the marker is inert.
+    /// Whether the map is in edit mode. Drives the view-mode-vs-edit-mode
+    /// cursor affordance only; whether the marker actually responds to a
+    /// pointer-down is `interactive`, not this.
     #[props(default)]
     editing: bool,
+    /// Whether this marker currently responds to a pointer-down (select +
+    /// start a drag) and shows its on-canvas handles when selected. Distinct
+    /// from `editing`: false while edit mode is on but a different tool is
+    /// armed or a placement picker is open, even though `editing` is still
+    /// true — without this, the marker would show a misleading "draggable"
+    /// cursor and stay clickable underneath an unrelated tool.
+    #[props(default)]
+    interactive: bool,
     /// Whether the referenced [`Camera`](shield_models::Camera) no longer exists
     /// (placed reference is dangling). Rendered in a distinct "unknown" style.
     #[props(default)]
@@ -83,11 +92,12 @@ pub fn MapCameraMarker(
             "data-selected": selected,
             "data-orphaned": orphaned,
             "data-editing": editing,
+            "data-interactive": interactive,
             // Field-of-view wedge.
             path { class: "map-camera__fov", d: "{cone_path}" }
 
             // Selected cameras get on-canvas handles for direct manipulation.
-            if selected && editing {
+            if selected && interactive {
                 // Guide line from the marker to the aim/range handles.
                 line {
                     class: "map-camera__guide",
@@ -132,7 +142,7 @@ pub fn MapCameraMarker(
                 cy: "{cy}",
                 r: "{MARKER_RADIUS_CM}",
                 onpointerdown: move |evt: Event<PointerData>| {
-                    if editing {
+                    if interactive {
                         evt.stop_propagation();
                         if let Some(cb) = on_body_pointer_down {
                             cb.call(evt);

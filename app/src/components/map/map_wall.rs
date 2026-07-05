@@ -25,10 +25,18 @@ pub fn MapWallPath(
     /// emphasis).
     #[props(default)]
     selected: bool,
-    /// Whether the map is in edit mode (enables interaction). Outside edit
-    /// mode the path is inert.
+    /// Whether the map is in edit mode. Reserved for edit-mode-vs-view-mode
+    /// styling; whether the path actually responds to a pointer-down is
+    /// `interactive`, not this.
     #[props(default)]
     editing: bool,
+    /// Whether this wall currently responds to a pointer-down (select) and
+    /// shows its vertex handles when selected. Distinct from `editing`: false
+    /// while edit mode is on but a different tool is armed or a placement
+    /// picker is open, even though `editing` is still true — without this,
+    /// the wall would stay clickable underneath an unrelated tool.
+    #[props(default)]
+    interactive: bool,
     /// Fired on pointer-down on the wall's hit area. The host uses this to
     /// select the wall.
     #[props(default)]
@@ -44,6 +52,7 @@ pub fn MapWallPath(
             class: "map-wall",
             "data-selected": selected,
             "data-editing": editing,
+            "data-interactive": interactive,
             path { class: "map-wall__stroke", d: "{d}", fill: "none" }
             // Invisible, constant-width click target layered over the visible
             // stroke — see `.map-wall__hit-area` for why this is separate
@@ -53,7 +62,7 @@ pub fn MapWallPath(
                 d: "{d}",
                 fill: "none",
                 onpointerdown: move |evt: Event<PointerData>| {
-                    if editing {
+                    if interactive {
                         evt.stop_propagation();
                         if let Some(cb) = on_path_pointer_down {
                             cb.call(evt);
@@ -61,7 +70,7 @@ pub fn MapWallPath(
                     }
                 },
             }
-            if selected && editing {
+            if selected && interactive {
                 for (i , v) in wall.vertices.iter().enumerate() {
                     circle {
                         key: "{i}",

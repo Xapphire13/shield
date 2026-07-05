@@ -1382,6 +1382,7 @@ pub fn MapView() -> Element {
                                     door,
                                     selected: is_selected,
                                     editing: is_editing,
+                                    interactive: elements_selectable,
                                     on_body_pointer_down: {
                                         let id = id.clone();
                                         move |_evt: Event<PointerData>| {

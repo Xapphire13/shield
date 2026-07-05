@@ -23,11 +23,13 @@ pub enum Endpoint {
 /// [`MapCameraMarker`](super::map_camera::MapCameraMarker) /
 /// [`MapWallPath`](super::map_wall::MapWallPath).
 ///
-/// Selectable via a pointer-down on the opening line; once selected (and in
-/// edit mode) each endpoint gets an on-canvas drag handle for reshaping /
-/// repositioning it. There is no whole-door drag — only individual
-/// endpoints move, same "select-only on body, drag only via named handles"
-/// pattern `MapWallPath` established for walls.
+/// Selectable via a pointer-down on an invisible, constant-width hit area
+/// layered over the (purely decorative, world-scaled) opening line — see
+/// `.map-door__hit-area` in `main.css`, same technique `MapWallPath` uses.
+/// Once selected (and in edit mode) each endpoint gets an on-canvas drag
+/// handle for reshaping / repositioning it. There is no whole-door drag —
+/// only individual endpoints move, same "select-only on body, drag only via
+/// named handles" pattern `MapWallPath` established for walls.
 #[component]
 pub fn MapDoorMarker(
     door: MapDoor,
@@ -35,12 +37,21 @@ pub fn MapDoorMarker(
     /// emphasis).
     #[props(default)]
     selected: bool,
-    /// Whether the map is in edit mode (enables interaction). Outside edit
-    /// mode the door is inert.
+    /// Whether the map is in edit mode. Reserved for edit-mode-vs-view-mode
+    /// styling; whether the door actually responds to a pointer-down is
+    /// `interactive`, not this.
     #[props(default)]
     editing: bool,
-    /// Fired on pointer-down on the opening line. The host uses this to
-    /// select the door.
+    /// Whether this door currently responds to a pointer-down (select) and
+    /// shows its endpoint handles when selected. Distinct from `editing`:
+    /// false while edit mode is on but a different tool is armed or a
+    /// placement picker is open, even though `editing` is still true —
+    /// without this, the door would stay clickable underneath an unrelated
+    /// tool (same fix `MapWallPath`/`MapCameraMarker` already have).
+    #[props(default)]
+    interactive: bool,
+    /// Fired on pointer-down on the opening line's hit area. The host uses
+    /// this to select the door.
     #[props(default)]
     on_body_pointer_down: Option<Callback<Event<PointerData>>>,
     /// Fired on pointer-down on an endpoint handle, with which endpoint. The
@@ -54,14 +65,25 @@ pub fn MapDoorMarker(
             class: "map-door",
             "data-selected": selected,
             "data-editing": editing,
+            "data-interactive": interactive,
             line {
                 class: "map-door__opening",
                 x1: "{door.start.x}",
                 y1: "{door.start.y}",
                 x2: "{door.end.x}",
                 y2: "{door.end.y}",
+            }
+            // Invisible, constant-width click target layered over the visible
+            // opening line — see `.map-door__hit-area` for why this is
+            // separate from the (world-scaled, purely decorative) line above.
+            line {
+                class: "map-door__hit-area",
+                x1: "{door.start.x}",
+                y1: "{door.start.y}",
+                x2: "{door.end.x}",
+                y2: "{door.end.y}",
                 onpointerdown: move |evt: Event<PointerData>| {
-                    if editing {
+                    if interactive {
                         evt.stop_propagation();
                         if let Some(cb) = on_body_pointer_down {
                             cb.call(evt);
@@ -81,7 +103,7 @@ pub fn MapDoorMarker(
                 d: "{swing_arc_d(&door, open_x, open_y)}",
                 fill: "none",
             }
-            if selected && editing {
+            if selected && interactive {
                 circle {
                     class: "map-door__endpoint-handle",
                     cx: "{door.start.x}",

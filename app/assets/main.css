@@ -647,17 +647,32 @@ ul {
 
 /* Placed door: a freestanding gap/marker, not a solid boundary — styled
    noticeably lighter/thinner than `.map-wall__stroke` (stroke-width 6) so it
-   reads as an opening rather than a wall. Selectable via a pointer-down on
-   the opening line; `pointer-events: stroke` widens the hit area to the full
-   dashed stroke width, same rationale as `.map-wall__stroke`. */
+   reads as an opening rather than a wall. Purely decorative —
+   `pointer-events: none`, since the invisible `.map-door__hit-area` (below)
+   owns clicking. Its width is in world-space cm, so it scales with zoom. */
 .map-door__opening {
     stroke: var(--color-text-muted);
     stroke-width: 3;
     stroke-dasharray: 8 6;
+    pointer-events: none;
+}
+
+/* Invisible click target, layered over the visible opening line. A constant
+   screen-pixel width (`non-scaling-stroke`) rather than the visible line's
+   world-space width, so the door stays comfortably clickable even when
+   zoomed out far enough to shrink the visible line to a sliver — same
+   rationale as `.map-wall__hit-area`. */
+.map-door__hit-area {
+    stroke: transparent;
+    stroke-width: 20px;
+    vector-effect: non-scaling-stroke;
     pointer-events: stroke;
 }
 
-.map-door[data-editing="true"] .map-door__opening {
+/* Keyed on `data-interactive`, not `data-editing` — a door stays inert (no
+   pointer affordance) while a different tool is armed or a picker is open,
+   even though the map is still in edit mode. */
+.map-door[data-interactive="true"] .map-door__hit-area {
     cursor: pointer;
 }
 

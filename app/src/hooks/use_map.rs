@@ -278,8 +278,8 @@ pub struct UseMapResult {
     pub remove_camera: Callback<String>,
     /// Place a new wall (or fence) on the map.
     pub place_wall: Callback<MapWall>,
-    /// Replace an existing wall's vertices.
-    pub update_wall_vertices: Callback<(String, Vec<Point>)>,
+    /// Move a single vertex (by index) of an existing wall to a new position.
+    pub move_wall_vertex: Callback<(String, usize, Point)>,
     /// Close an existing wall (add the implicit closing segment).
     pub close_wall: Callback<String>,
     /// Recolor an existing wall.
@@ -288,8 +288,9 @@ pub struct UseMapResult {
     pub remove_wall: Callback<String>,
     /// Place a new door (or gate) on the map.
     pub place_door: Callback<MapDoor>,
-    /// Move an existing door's start/end points.
-    pub move_door: Callback<(String, Point, Point)>,
+    /// Move one endpoint (`true` = start, `false` = end) of an existing door
+    /// to a new position.
+    pub move_door_endpoint: Callback<(String, bool, Point)>,
     /// Flip an existing door's swing side.
     pub flip_door_swing: Callback<String>,
     /// Remove a door from the map.
@@ -434,9 +435,14 @@ pub fn use_map(map_id: String) -> UseMapResult {
         move |wall: MapWall| commit(MapEdit::AddWall(wall))
     });
 
-    let update_wall_vertices = use_callback({
+    // Splices a single vertex's new position into the wall's *current* vertex
+    // list, read fresh at call time rather than from a pre-drag snapshot the
+    // caller captured earlier — a drag can span multiple renders (and thus
+    // multiple stale snapshots) before the gesture ends, so only a live read
+    // here guarantees the base list matches what's actually on the map.
+    let move_wall_vertex = use_callback({
         let mut commit = commit.clone();
-        move |(wall_id, to): (String, Vec<Point>)| {
+        move |(wall_id, vertex_index, position): (String, usize, Point)| {
             let Some(from) = map()
                 .and_then(|m| m.walls.into_iter().find(|w| w.id == wall_id))
                 .map(|w| w.vertices)
@@ -444,9 +450,15 @@ pub fn use_map(map_id: String) -> UseMapResult {
                 return;
             };
 
-            if from == to {
+            if from.get(vertex_index) == Some(&position) {
                 return;
             }
+
+            let mut to = from.clone();
+            let Some(v) = to.get_mut(vertex_index) else {
+                return;
+            };
+            *v = position;
 
             commit(MapEdit::UpdateWallVertices { wall_id, from, to });
         }
@@ -509,9 +521,14 @@ pub fn use_map(map_id: String) -> UseMapResult {
         move |door: MapDoor| commit(MapEdit::AddDoor(door))
     });
 
-    let move_door = use_callback({
+    // Same rationale as `move_wall_vertex`: reads the door's current
+    // start/end fresh at call time and only overwrites whichever endpoint
+    // moved, so a drag that spans multiple renders still commits against the
+    // door's actual current state rather than a snapshot from before the
+    // gesture began.
+    let move_door_endpoint = use_callback({
         let mut commit = commit.clone();
-        move |(door_id, new_start, new_end): (String, Point, Point)| {
+        move |(door_id, moving_start, position): (String, bool, Point)| {
             let Some(from) = map()
                 .and_then(|m| m.doors.into_iter().find(|d| d.id == door_id))
                 .map(|d| (d.start, d.end))
@@ -519,7 +536,11 @@ pub fn use_map(map_id: String) -> UseMapResult {
                 return;
             };
 
-            let to = (new_start, new_end);
+            let to = if moving_start {
+                (position, from.1.clone())
+            } else {
+                (from.0.clone(), position)
+            };
             if from == to {
                 return;
             }
@@ -614,12 +635,12 @@ pub fn use_map(map_id: String) -> UseMapResult {
         aim_camera,
         remove_camera,
         place_wall,
-        update_wall_vertices,
+        move_wall_vertex,
         close_wall,
         recolor_wall,
         remove_wall,
         place_door,
-        move_door,
+        move_door_endpoint,
         flip_door_swing,
         remove_door,
         undo,

@@ -1,5 +1,6 @@
 pub mod camera_info;
 pub mod camera_inspector;
+pub mod canvas_gestures;
 pub mod color_swatch_picker;
 pub mod door_inspector;
 pub mod edit_toolbar;

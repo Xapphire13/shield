@@ -1,31 +1,30 @@
 use dioxus::prelude::*;
 use dioxus_free_icons::Icon;
 use dioxus_free_icons::icons::ld_icons::{LdCornerUpLeft, LdCornerUpRight};
-use shield_models::{MapCamera, MapDoor, MapWall, WallColor};
+use shield_models::{MapCamera, MapDoor, MapWall};
 use wasm_bindgen::JsCast;
 use wasm_bindgen::closure::Closure;
 
 use crate::components::layout::TopBar;
+use crate::components::map::bottom_panel::BottomPanel;
 use crate::components::map::camera_info::CameraInfo;
-use crate::components::map::camera_inspector::CameraInspector;
 use crate::components::map::canvas_gestures::{
-    CLOSE_LOOP_HIT_RADIUS_PX, MapCommit, PointerMoveOutcome, ToolDownAction, canvas_xy,
-    finish_wall_draft, pinch_move, pinch_start, pointer_move_transition, pointer_up_commit,
-    tool_pointer_down,
+    MapCommit, PointerMoveOutcome, ToolDownAction, canvas_xy, finish_wall_draft, pinch_move,
+    pinch_start, pointer_move_transition, pointer_up_commit, tool_pointer_down,
 };
-use crate::components::map::door_inspector::DoorInspector;
-use crate::components::map::edit_toolbar::{CameraPicker, EditToolbar};
-use crate::components::map::geometry::{content_bounds, distance, fully_contains_bounds};
+use crate::components::map::coord_readout::CoordReadout;
+use crate::components::map::draft_overlay::DraftOverlay;
+use crate::components::map::edit_toolbar::CameraPicker;
+use crate::components::map::geometry::{content_bounds, fully_contains_bounds};
 use crate::components::map::interaction::{
     DragPreview, EscapeAction, Gesture, Selection, Tool, escape_transition,
 };
-use crate::components::map::map_camera::{MARKER_RADIUS_CM, MapCameraMarker};
+use crate::components::map::map_camera::MapCameraMarker;
 use crate::components::map::map_door::{Endpoint, MapDoorMarker};
 use crate::components::map::map_wall::MapWallPath;
 use crate::components::map::minimap::Minimap;
 use crate::components::map::unplaced_badge::UnplacedBadge;
 use crate::components::map::viewport::{BUTTON_ZOOM_STEP, Viewport, WHEEL_ZOOM_STEP};
-use crate::components::map::wall_inspector::WallInspector;
 use crate::components::map::zoom_controls::ZoomControls;
 use crate::hooks::{
     UseCamerasResult, UseElementRectResult, UseMapResult, after_next_layout, element_rect,
@@ -714,251 +713,42 @@ pub fn MapView() -> Element {
                         }
                     }
 
-                    // --- In-progress door placement preview ---
-                    // A rubber-band line from the already-placed start point to
-                    // the live cursor position while the second click is still
-                    // pending, same technique the wall draft's rubber-band
-                    // uses. Reuses `.draft_rubber_band` directly
-                    // (same visual language: "a tentative, not-yet-committed
-                    // line") rather than a near-duplicate class.
-                    if let Tool::PlaceDoor { start: Some(point) } = &*tool.read()
-                        && let Some((cx, cy)) = *cursor_pos.read()
-                    {
-                        {
-                            let (wx, wy) = viewport.read().screen_to_world(cx, cy);
-                            rsx! {
-                                line {
-                                    class: style::draft_rubber_band,
-                                    x1: "{point.x}",
-                                    y1: "{point.y}",
-                                    x2: "{wx}",
-                                    y2: "{wy}",
-                                }
-                            }
-                        }
-                    }
-
-                    // --- In-progress wall draft ---
-                    // Rendered here (inside the world-space group) so it pans
-                    // and zooms with everything else. No selection/editing of
-                    // finished walls yet — this is purely the live-drawing
-                    // preview for the active `Tool::DrawWall` draft.
-                    if let Tool::DrawWall { vertices } = &*tool.read() {
-                        // Committed segments so far: a plain open polyline,
-                        // never closed while still drafting.
-                        if vertices.len() >= 2 {
-                            {
-                                let mut parts = Vec::with_capacity(vertices.len());
-                                for (i, v) in vertices.iter().enumerate() {
-                                    let cmd = if i == 0 { "M" } else { "L" };
-                                    parts.push(format!("{cmd} {} {}", v.x, v.y));
-                                }
-                                let d = parts.join(" ");
-                                rsx! {
-                                    path { class: style::draft_path, d: "{d}" }
-                                }
-                            }
-                        }
-
-                        // Rubber-band segment from the last committed vertex to
-                        // the live cursor position, derived from `cursor_pos`
-                        // (reused rather than tracked separately).
-                        if let (Some(last), Some((cx, cy))) = (vertices.last(), *cursor_pos.read())
-                        {
-                            {
-                                let (wx, wy) = viewport.read().screen_to_world(cx, cy);
-                                rsx! {
-                                    line {
-                                        class: style::draft_rubber_band,
-                                        x1: "{last.x}",
-                                        y1: "{last.y}",
-                                        x2: "{wx}",
-                                        y2: "{wy}",
-                                    }
-                                }
-                            }
-                        }
-
-                        // A small dot at each committed vertex.
-                        for (i , v) in vertices.iter().enumerate() {
-                            circle {
-                                key: "{i}",
-                                class: style::draft_vertex,
-                                cx: "{v.x}",
-                                cy: "{v.y}",
-                                r: "{MARKER_RADIUS_CM * 0.3}",
-                            }
-                        }
-
-                        // Once there are enough vertices to close a loop,
-                        // highlight the first vertex as the close-loop target,
-                        // with a hover affordance once the cursor is actually
-                        // within the auto-close hit radius (same threshold the
-                        // pointerdown handler uses to commit the close).
-                        if vertices.len() >= 3
-                            && let Some(first) = vertices.first()
-                        {
-                            {
-                                let in_range = cursor_pos.read().is_some_and(|(cx, cy)| {
-                                    let (v0_sx, v0_sy) = viewport
-                                        .read()
-                                        .world_to_screen(first.x as f64, first.y as f64);
-                                    distance(cx, cy, v0_sx, v0_sy) <= CLOSE_LOOP_HIT_RADIUS_PX
-                                });
-                                rsx! {
-                                    circle {
-                                        class: style::draft_close_target,
-                                        "data-in-range": in_range,
-                                        cx: "{first.x}",
-                                        cy: "{first.y}",
-                                        r: "{MARKER_RADIUS_CM}",
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    // In-progress placement/drawing preview (wall draft, door
+                    // rubber-band), inside the world-space group so it pans
+                    // and zooms with everything else.
+                    DraftOverlay { tool, cursor_pos, viewport }
                 }
                 }
 
-                // --- Coordinate readout (placement tools and vertex drags) ---
-                // Follows the pointer, offset slightly so the label doesn't sit
-                // directly under the cursor/finger. Shown while a placement
-                // tool is armed, and while dragging an existing camera, wall
-                // vertex, or door endpoint (using the same previewed position
-                // the canvas is rendering, not a fresh screen-to-world lookup,
-                // so the readout always matches what's on screen).
-                if let Some((cx, cy)) = *cursor_pos.read() {
-                    {
-                        let coords = drag_preview.read().dragged_vertex_position()
-                            .map(|position| (position.x, position.y))
-                            .or_else(|| {
-                                if matches!(*tool.read(), Tool::Select) {
-                                    None
-                                } else {
-                                    let (wx, wy) = viewport.read().screen_to_world(cx, cy);
-                                    Some((wx.round() as i32, wy.round() as i32))
-                                }
-                            });
-                        rsx! {
-                            if let Some((wx, wy)) = coords {
-                                div {
-                                    class: style::coord_readout,
-                                    style: "left: {cx + 14.0}px; top: {cy + 14.0}px;",
-                                    "{wx}, {wy} cm",
-                                }
-                            }
-                        }
-                    }
-                }
+                // Cursor-following world-coordinate readout for placement
+                // tools and vertex drags. Canvas-relative, so it sits in the
+                // frame, not the svg.
+                CoordReadout { tool, cursor_pos, drag_preview, viewport }
             }
 
             // --- Bottom chrome (edit mode only) ---
-            // Inspector takes precedence over the tool strip when a camera,
-            // wall, or door is selected (camera first, then wall, then door).
-            // Both sit above the global navigation toolbar.
+            // Contextual inspector for the selection, or the tool strip when
+            // nothing is selected. Sits above the global navigation toolbar.
             if is_editing {
-                if let Some(camera) = selected_camera.clone() {
-                    CameraInspector {
-                        name: name_for(&camera.camera_id),
-                        fov: camera.fov.clone(),
-                        on_preview_fov: {
-                            // Live, uncommitted preview: drive the same drag
-                            // preview the on-canvas handles use so the cone
-                            // (and the inspector's own `fov` prop) update in
-                            // real time without persisting or touching undo.
-                            let id = camera.camera_id.clone();
-                            move |fov| {
-                                drag_preview
-                                    .set(DragPreview::Fov {
-                                        camera_id: id.clone(),
-                                        fov,
-                                    });
-                            }
-                        },
-                        on_change_fov: {
-                            // Release: commit one edit and drop the preview.
-                            let id = camera.camera_id.clone();
-                            move |fov| {
-                                aim_camera((id.clone(), fov));
-                                drag_preview.set(DragPreview::None);
-                            }
-                        },
-                        on_delete: {
-                            let id = camera.camera_id.clone();
-                            move |_| {
-                                remove_camera(id.clone());
-                                selection.set(None);
-                            }
-                        },
-                    }
-                } else if let Some(wall) = selected_wall.clone() {
-                    WallInspector {
-                        wall: wall.clone(),
-                        on_close_loop: {
-                            let id = wall.id.clone();
-                            move |_| close_wall(id.clone())
-                        },
-                        on_recolor: {
-                            let id = wall.id.clone();
-                            move |color| recolor_wall((id.clone(), color))
-                        },
-                        on_delete: {
-                            let id = wall.id.clone();
-                            move |_| {
-                                remove_wall(id.clone());
-                                selection.set(None);
-                            }
-                        },
-                    }
-                } else if let Some(door) = selected_door.clone() {
-                    DoorInspector {
-                        door: door.clone(),
-                        on_flip_swing: {
-                            let id = door.id.clone();
-                            move |_| flip_door_swing(id.clone())
-                        },
-                        on_delete: {
-                            let id = door.id.clone();
-                            move |_| {
-                                remove_door(id.clone());
-                                selection.set(None);
-                            }
-                        },
-                    }
-                } else {
-                    EditToolbar {
-                        active_tool: tool.read().clone(),
-                        camera_picker_open: *picker_open.read(),
-                        on_select: move |_| {
-                            tool.set(Tool::Select);
-                            picker_open.set(false);
-                        },
-                        on_add_camera: move |_| {
-                            tool.set(Tool::Select);
-                            picker_open.set(true);
-                        },
-                        on_draw_wall: move |_| {
-                            tool.set(Tool::DrawWall { vertices: Vec::new() });
-                            picker_open.set(false);
-                        },
-                        on_finish_wall: move |_| {
-                            if let Tool::DrawWall { vertices } = tool.read().clone()
-                                && vertices.len() >= 2
-                            {
-                                place_wall(MapWall {
-                                    id: uuid::Uuid::new_v4().to_string(),
-                                    vertices,
-                                    closed: false,
-                                    color: WallColor::default(),
-                                });
-                            }
-                            tool.set(Tool::Select);
-                        },
-                        on_place_door: move |_| {
-                            tool.set(Tool::PlaceDoor { start: None });
-                            picker_open.set(false);
-                        },
-                    }
+                BottomPanel {
+                    selected_camera: selected_camera.clone(),
+                    selected_camera_name: selected_camera
+                        .as_ref()
+                        .and_then(|camera| name_for(&camera.camera_id)),
+                    selected_wall: selected_wall.clone(),
+                    selected_door: selected_door.clone(),
+                    tool,
+                    picker_open,
+                    drag_preview,
+                    selection,
+                    aim_camera,
+                    remove_camera,
+                    place_wall,
+                    close_wall,
+                    recolor_wall,
+                    remove_wall,
+                    flip_door_swing,
+                    remove_door,
                 }
             }
 

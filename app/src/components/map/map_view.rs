@@ -24,7 +24,10 @@ use crate::components::map::unplaced_badge::UnplacedBadge;
 use crate::components::map::viewport::{BUTTON_ZOOM_STEP, Viewport, WHEEL_ZOOM_STEP};
 use crate::components::map::wall_inspector::WallInspector;
 use crate::components::map::zoom_controls::ZoomControls;
-use crate::hooks::{UseCamerasResult, UseMapResult, use_cameras, use_map};
+use crate::hooks::{
+    UseCamerasResult, UseElementRectResult, UseMapResult, after_next_layout, element_rect,
+    use_cameras, use_element_rect, use_map,
+};
 
 /// The single map edited in v1. The service lazily returns an empty map for any
 /// id, so a fixed default is sufficient until multi-map UI exists.
@@ -32,37 +35,6 @@ const DEFAULT_MAP_ID: &str = "default";
 
 /// DOM id of the canvas frame element, used to locate it for measurement.
 const CANVAS_FRAME_ID: &str = style::canvas_frame;
-
-/// Look up the canvas frame element in the DOM by its id.
-fn canvas_frame_element() -> Option<web_sys::Element> {
-    web_sys::window()?
-        .document()?
-        .get_element_by_id(CANVAS_FRAME_ID)
-}
-
-/// Read the canvas frame's bounding rect as `(left, top, width, height)` in
-/// viewport pixels, or `None` if it isn't in the DOM yet.
-fn canvas_frame_rect() -> Option<(f64, f64, f64, f64)> {
-    let rect = canvas_frame_element()?.get_bounding_client_rect();
-    Some((rect.left(), rect.top(), rect.width(), rect.height()))
-}
-
-/// Run `f` after the browser has applied layout for the current frame, using a
-/// double `requestAnimationFrame` (one frame to apply layout, one to be safe).
-/// Each callback is one-shot, so `Closure::once_into_js` is used to hand it to
-/// the browser without manual lifetime bookkeeping.
-fn after_next_layout(f: impl FnOnce() + 'static) {
-    let Some(window) = web_sys::window() else {
-        return;
-    };
-    let inner = Closure::once_into_js(f);
-    let outer = Closure::once_into_js(move || {
-        if let Some(window) = web_sys::window() {
-            let _ = window.request_animation_frame(inner.unchecked_ref());
-        }
-    });
-    let _ = window.request_animation_frame(outer.unchecked_ref());
-}
 
 /// Default field-of-view applied to a freshly placed camera.
 const DEFAULT_FOV: FieldOfView = FieldOfView {
@@ -158,58 +130,23 @@ pub fn MapView() -> Element {
     // placement tool is active so the coordinate readout can follow it.
     let mut cursor_pos = use_signal(|| None::<(f64, f64)>);
 
-    // Cached canvas geometry from the frame's bounding rect: the viewport-relative
-    // top-left (origin) drives canvas-relative pointer math (see `canvas_xy`), and
-    // the size drives the initial fit-to-content. The rect is stable during a
+    // Cached canvas geometry from the frame's bounding rect, tracked by a
+    // ResizeObserver (see `use_element_rect`): the viewport-relative top-left
+    // (origin) drives canvas-relative pointer math (see `canvas_xy`), and the
+    // size drives the initial fit-to-content. The rect is stable during a
     // drag, so the cached values stay correct.
-    let mut canvas_origin = use_signal(|| (0.0_f64, 0.0_f64));
-    let mut canvas_size = use_signal(|| (0.0_f64, 0.0_f64));
+    let UseElementRectResult {
+        origin: canvas_origin,
+        size: canvas_size,
+    } = use_element_rect(CANVAS_FRAME_ID);
     // Whether the initial fit-to-content has been applied. Guards against
     // re-fitting on later edits / pans / zooms.
     let mut fitted = use_signal(|| false);
 
-    // Measure the frame with a ResizeObserver rather than a one-shot mount read.
-    // A mount-time read can run before the browser's first layout pass on a fresh
-    // / deep-link load, measuring a not-yet-laid-out box; the observer instead
-    // fires once *after* layout (fixing that case) and again on every size change,
-    // so it also subsumes a window-resize listener and is the single source of
-    // truth for both origin and size. The observer + its callback closure are
-    // held in component state so they stay alive for the component's lifetime.
-    let _observer = use_hook(|| {
-        let callback = Closure::<dyn FnMut()>::new(move || {
-            if let Some((left, top, width, height)) = canvas_frame_rect() {
-                canvas_origin.set((left, top));
-                canvas_size.set((width, height));
-            }
-        });
-
-        // The frame may not be in the DOM on the very first effect tick; retry on
-        // the next layout frame if so.
-        let observer = web_sys::ResizeObserver::new(callback.as_ref().unchecked_ref()).ok();
-        if let Some(observer) = &observer {
-            if let Some(element) = canvas_frame_element() {
-                observer.observe(&element);
-            } else {
-                let observer = observer.clone();
-                after_next_layout(move || {
-                    if let Some(element) = canvas_frame_element() {
-                        observer.observe(&element);
-                    }
-                });
-            }
-        }
-
-        // Keep both alive for the component's lifetime: dropping the closure
-        // would invalidate the observer's callback, and dropping the observer
-        // would stop notifications. `Rc` makes the stored state `Clone` (which
-        // `use_hook` requires) without cloning the non-`Clone` closure.
-        std::rc::Rc::new((observer, callback))
-    });
-
     // Escape backs out the innermost active state (see `escape_transition`
-    // for the cascade). Listened for at the document level, same shape as the
-    // `ResizeObserver` hook above: the closure and listener registration are
-    // kept alive together in component state for the component's lifetime.
+    // for the cascade). Listened for at the document level; the closure and
+    // listener registration are kept alive together in component state for
+    // the component's lifetime.
     let _keydown_listener = use_hook(|| {
         let callback = Closure::<dyn FnMut(web_sys::Event)>::new(move |evt: web_sys::Event| {
             if let Ok(evt) = evt.dyn_into::<web_sys::KeyboardEvent>()
@@ -265,7 +202,7 @@ pub fn MapView() -> Element {
                 return;
             }
             after_next_layout(move || {
-                let Some((_, _, width, height)) = canvas_frame_rect() else {
+                let Some((_, _, width, height)) = element_rect(CANVAS_FRAME_ID) else {
                     return;
                 };
                 if width > 0.0

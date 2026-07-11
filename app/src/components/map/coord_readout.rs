@@ -37,10 +37,16 @@ pub fn CoordReadout(
                     });
                 rsx! {
                     if let Some((wx, wy)) = coords {
-                        div {
-                            class: style::coord_readout,
-                            style: "left: {cx + 14.0}px; top: {cy + 14.0}px;",
-                            "{wx}, {wy} cm",
+                        {
+                            let mx = wx as f64 / 100.0;
+                            let my = wy as f64 / 100.0;
+                            rsx! {
+                                div {
+                                    class: style::coord_readout,
+                                    style: "left: {cx + 14.0}px; top: {cy + 14.0}px;",
+                                    "{mx:.2}, {my:.2} m",
+                                }
+                            }
                         }
                     }
                 }

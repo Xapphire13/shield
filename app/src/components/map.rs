@@ -14,6 +14,7 @@ pub mod map_door;
 pub mod map_view;
 pub mod map_wall;
 pub mod minimap;
+pub mod scale_bar;
 pub mod unplaced_badge;
 pub mod viewport;
 pub mod wall_inspector;

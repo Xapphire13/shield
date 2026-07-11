@@ -1,0 +1,38 @@
+/* Persistent bottom-center scale bar: a line with end ticks and a
+   world-length label, always one grid square wide (see `ScaleBar` /
+   `grid_spacing_cm`). Deliberately un-cards (no background/border) so it
+   reads as a ruler laid directly on the map rather than a floating panel —
+   the whole point is lining it up against map content to judge scale. A drop
+   shadow keeps it legible over both light and dark map content in place of a
+   background. Centered (rather than a corner) so it sits clear of the other
+   corner overlays (minimap, zoom controls, unplaced-camera badge). */
+.container {
+    position: fixed;
+    left: 50%;
+    bottom: calc(var(--bottom-toolbar-height) + 24px);
+    transform: translateX(-50%);
+    z-index: calc(var(--z-bottom-toolbar) - 1);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
+
+.label {
+    color: var(--color-text);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 1px 2px var(--color-shadow);
+}
+
+.ticks {
+    /* SVG is inline by default, which leaves a stray descender gap below it
+       (same as an <img>); block layout removes that gap. */
+    display: block;
+    filter: drop-shadow(0 1px 1px var(--color-shadow));
+}
+
+.stroke {
+    stroke: var(--color-border-strong);
+    stroke-width: 1;
+}

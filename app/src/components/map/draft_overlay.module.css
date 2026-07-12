@@ -26,9 +26,11 @@
     vector-effect: non-scaling-stroke;
 }
 
-/* Highlighted ring around the first vertex once the draft has enough points
-   to close into a loop — signals "click here to close". */
-.close_target {
+/* Highlighted rings around the draft's clickable vertices: the first vertex
+   once the draft can close into a loop ("click here to close") and the last
+   vertex once the draft can form a wall ("click here to finish"). */
+.close_target,
+.finish_target {
     fill: none;
     stroke: var(--color-accent);
     stroke-width: 2px;
@@ -37,9 +39,10 @@
     opacity: 0.85;
 }
 
-/* Once the cursor is within the auto-close hit radius, solidify the ring to
-   signal "release here to close the loop". */
-.close_target[data-in-range="true"] {
+/* Once the cursor is within the target's hit radius, solidify the ring to
+   signal the click will commit (close the loop / finish the wall). */
+.close_target[data-in-range="true"],
+.finish_target[data-in-range="true"] {
     fill: var(--color-accent);
     fill-opacity: 0.25;
     stroke-dasharray: none;

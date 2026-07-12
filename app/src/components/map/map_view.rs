@@ -13,6 +13,9 @@ use crate::components::map::edit_toolbar::{CameraPicker, EditToolbar};
 use crate::components::map::geometry::{
     apply_drag_delta, bearing_to, content_bounds, distance, fully_contains_bounds,
 };
+use crate::components::map::interaction::{
+    DragPreview, EscapeAction, Gesture, Selection, Tool, escape_transition,
+};
 use crate::components::map::map_camera::{MARKER_RADIUS_CM, MapCameraMarker};
 use crate::components::map::map_door::{Endpoint, MapDoorMarker};
 use crate::components::map::map_wall::MapWallPath;
@@ -86,131 +89,6 @@ const CLOSE_LOOP_HIT_RADIUS_PX: f64 = 14.0;
 /// to be huge at low zoom and negligible at high zoom to represent "the same
 /// physical click" either way.
 const DOUBLE_CLICK_DEDUP_RADIUS_PX: f64 = 6.0;
-
-/// Active gesture being tracked across pointer/touch events.
-///
-/// Pan starts on empty canvas; the camera-manipulation gestures start on a
-/// marker / handle (which stops propagation so the canvas pan handler does not
-/// also fire — this is the target-based disambiguation). Manipulation gestures
-/// preview locally and commit exactly one edit on release.
-#[derive(Clone, PartialEq)]
-enum Gesture {
-    None,
-    /// One-pointer pan; stores the last screen position seen.
-    Pan {
-        last_x: f64,
-        last_y: f64,
-    },
-    /// Two-finger pinch; stores the last finger distance (the midpoint is
-    /// recomputed each move and used as the zoom anchor).
-    Pinch {
-        last_distance: f64,
-    },
-    /// Dragging a selected camera's body. Tracks the last screen position so the
-    /// per-move delta can be converted to world cm.
-    MoveCamera {
-        camera_id: String,
-        last_x: f64,
-        last_y: f64,
-    },
-    /// Dragging the aim handle (rotates the cone toward the pointer).
-    AimCamera {
-        camera_id: String,
-    },
-    /// Dragging the range handle (lengthens / shortens the cone).
-    RangeCamera {
-        camera_id: String,
-    },
-    /// Dragging a single vertex of a selected wall. Tracks the last screen
-    /// position so the per-move delta can be converted to world cm, same
-    /// shape as `MoveCamera`.
-    MoveWallVertex {
-        wall_id: String,
-        vertex_index: usize,
-        last_x: f64,
-        last_y: f64,
-    },
-    /// Dragging a single endpoint of a selected door. Tracks the last screen
-    /// position so the per-move delta can be converted to world cm, same
-    /// shape as `MoveWallVertex`.
-    MoveDoorEndpoint {
-        door_id: String,
-        which: Endpoint,
-        last_x: f64,
-        last_y: f64,
-    },
-}
-
-impl Gesture {
-    /// Stable label for the active gesture, surfaced as a `data-gesture`
-    /// attribute on the canvas so the cursor stays consistent while dragging
-    /// even as the pointer crosses child elements.
-    fn label(&self) -> &'static str {
-        match self {
-            Gesture::None => "none",
-            Gesture::Pan { .. } => "pan",
-            Gesture::Pinch { .. } => "pinch",
-            Gesture::MoveCamera { .. } => "move",
-            Gesture::AimCamera { .. } => "aim",
-            Gesture::RangeCamera { .. } => "range",
-            Gesture::MoveWallVertex { .. } => "move-vertex",
-            Gesture::MoveDoorEndpoint { .. } => "move-endpoint",
-        }
-    }
-}
-
-/// A local, uncommitted preview of an in-progress manipulation. The canvas
-/// renders from this instead of the stored map while a gesture is active so the
-/// user sees live feedback; the matching edit is committed once on release.
-#[derive(Clone, PartialEq)]
-enum DragPreview {
-    None,
-    Position {
-        camera_id: String,
-        position: Point,
-    },
-    Fov {
-        camera_id: String,
-        fov: FieldOfView,
-    },
-    WallVertex {
-        wall_id: String,
-        vertex_index: usize,
-        position: Point,
-    },
-    DoorEndpoint {
-        door_id: String,
-        which: Endpoint,
-        position: Point,
-    },
-}
-
-/// The active editing tool. `Select` is the default/neutral tool (click to
-/// select, drag to move/pan); other variants arm a placement/drawing
-/// interaction. `pub(crate)` so `EditToolbar` can match on it directly to
-/// derive each button's active state, rather than the caller pre-computing a
-/// bool per tool.
-#[derive(Clone, PartialEq, Default)]
-pub(crate) enum Tool {
-    #[default]
-    Select,
-    /// A camera id chosen from the picker, awaiting a placement tap.
-    PlaceCamera(String),
-    /// Drawing a wall path. `vertices` accumulates world-space points as the
-    /// user clicks; nothing is committed to the map until the path finishes.
-    DrawWall { vertices: Vec<Point> },
-    /// Placing a door: `start` is `None` until the first of two clicks, then
-    /// `Some(point)` awaiting the second click to complete it.
-    PlaceDoor { start: Option<Point> },
-}
-
-/// What's currently selected in edit mode, for the contextual inspector.
-#[derive(Clone, PartialEq)]
-enum Selection {
-    Camera(String),
-    Wall(String),
-    Door(String),
-}
 
 /// Convert a pointer event to canvas-relative pixels using a cached canvas
 /// origin (the canvas's viewport-relative top-left).
@@ -328,33 +206,21 @@ pub fn MapView() -> Element {
         std::rc::Rc::new((observer, callback))
     });
 
-    // Escape cancels the active placement tool (no commit — same free-cancel
-    // semantics as switching back to Select). Door placement gets a
-    // two-stage cancel: the first Escape backs out of the pending second
-    // click (dropping the placed start point but staying in the tool), and a
-    // second Escape then fully exits to Select — smoother than losing the
-    // whole in-progress placement on one keypress. Choosing a camera from the
-    // picker also arms `PlaceCamera`, so Escape backs that out to Select too;
-    // and if the picker sheet itself is still open (tool hasn't left Select
-    // yet), Escape closes it. Once back on a plain Select with nothing else
-    // to unwind, a further Escape exits edit mode entirely, mirroring the
-    // "Done" button's reset (clear selection, tool, and picker). Listened for
-    // at the document level, same shape as the `ResizeObserver` hook above:
-    // the closure and listener registration are kept alive together in
-    // component state for the component's lifetime.
+    // Escape backs out the innermost active state (see `escape_transition`
+    // for the cascade). Listened for at the document level, same shape as the
+    // `ResizeObserver` hook above: the closure and listener registration are
+    // kept alive together in component state for the component's lifetime.
     let _keydown_listener = use_hook(|| {
         let callback = Closure::<dyn FnMut(web_sys::Event)>::new(move |evt: web_sys::Event| {
             if let Ok(evt) = evt.dyn_into::<web_sys::KeyboardEvent>()
                 && evt.key() == "Escape"
             {
                 let current = tool.read().clone();
-                match current {
-                    Tool::DrawWall { .. } => tool.set(Tool::Select),
-                    Tool::PlaceDoor { start: Some(_) } => tool.set(Tool::PlaceDoor { start: None }),
-                    Tool::PlaceDoor { start: None } => tool.set(Tool::Select),
-                    Tool::PlaceCamera(_) => tool.set(Tool::Select),
-                    Tool::Select if *picker_open.read() => picker_open.set(false),
-                    Tool::Select => {
+                let picker = *picker_open.read();
+                match escape_transition(&current, picker) {
+                    EscapeAction::SetTool(next) => tool.set(next),
+                    EscapeAction::ClosePicker => picker_open.set(false),
+                    EscapeAction::ExitEditMode => {
                         selection.set(None);
                         editing.set(false);
                     }
@@ -433,69 +299,12 @@ pub fn MapView() -> Element {
         .cloned()
         .collect();
 
-    // Apply any active preview so the canvas reflects the in-progress gesture.
+    // Apply any active drag preview so the canvas reflects the in-progress
+    // gesture instead of the stored map.
     let preview = drag_preview.read().clone();
-    let display_cameras: Vec<MapCamera> = placed
-        .iter()
-        .map(|camera| {
-            let mut camera = camera.clone();
-            match &preview {
-                DragPreview::Position {
-                    camera_id,
-                    position,
-                } if *camera_id == camera.camera_id => {
-                    camera.position = position.clone();
-                }
-                DragPreview::Fov { camera_id, fov } if *camera_id == camera.camera_id => {
-                    camera.fov = fov.clone();
-                }
-                _ => {}
-            }
-            camera
-        })
-        .collect();
-
-    // Apply any active vertex-drag preview so the canvas reflects the
-    // in-progress gesture, same shape as `display_cameras` above.
-    let display_walls: Vec<MapWall> = placed_walls
-        .iter()
-        .map(|wall| {
-            let mut wall = wall.clone();
-            if let DragPreview::WallVertex {
-                wall_id,
-                vertex_index,
-                position,
-            } = &preview
-                && *wall_id == wall.id
-                && let Some(v) = wall.vertices.get_mut(*vertex_index)
-            {
-                *v = position.clone();
-            }
-            wall
-        })
-        .collect();
-
-    // Apply any active endpoint-drag preview so the canvas reflects the
-    // in-progress gesture, same shape as `display_walls` above.
-    let display_doors: Vec<MapDoor> = placed_doors
-        .iter()
-        .map(|door| {
-            let mut door = door.clone();
-            if let DragPreview::DoorEndpoint {
-                door_id,
-                which,
-                position,
-            } = &preview
-                && *door_id == door.id
-            {
-                match which {
-                    Endpoint::Start => door.start = position.clone(),
-                    Endpoint::End => door.end = position.clone(),
-                }
-            }
-            door
-        })
-        .collect();
+    let display_cameras: Vec<MapCamera> = preview.apply_to_cameras(&placed);
+    let display_walls: Vec<MapWall> = preview.apply_to_walls(&placed_walls);
+    let display_doors: Vec<MapDoor> = preview.apply_to_doors(&placed_doors);
 
     let transform = viewport.read().transform();
     let grid_spacing_cm = viewport.read().grid_spacing_cm();
@@ -1523,65 +1332,6 @@ pub fn MapView() -> Element {
                     on_close: move |_| picker_open.set(false),
                 }
             }
-        }
-    }
-}
-
-impl DragPreview {
-    /// The previewed position for `camera_id`, if a position preview is active.
-    fn position_for(&self, camera_id: &str) -> Option<Point> {
-        match self {
-            DragPreview::Position {
-                camera_id: id,
-                position,
-            } if id == camera_id => Some(position.clone()),
-            _ => None,
-        }
-    }
-
-    /// The previewed FOV for `camera_id`, if a FOV preview is active.
-    fn fov_for(&self, camera_id: &str) -> Option<FieldOfView> {
-        match self {
-            DragPreview::Fov { camera_id: id, fov } if id == camera_id => Some(fov.clone()),
-            _ => None,
-        }
-    }
-
-    /// The previewed position for vertex `vertex_index` of `wall_id`, if a
-    /// matching wall-vertex preview is active.
-    fn wall_vertex_for(&self, wall_id: &str, vertex_index: usize) -> Option<Point> {
-        match self {
-            DragPreview::WallVertex {
-                wall_id: id,
-                vertex_index: idx,
-                position,
-            } if id == wall_id && *idx == vertex_index => Some(position.clone()),
-            _ => None,
-        }
-    }
-
-    /// The previewed position for endpoint `which` of `door_id`, if a
-    /// matching door-endpoint preview is active.
-    fn door_endpoint_for(&self, door_id: &str, which: Endpoint) -> Option<Point> {
-        match self {
-            DragPreview::DoorEndpoint {
-                door_id: id,
-                which: w,
-                position,
-            } if id == door_id && *w == which => Some(position.clone()),
-            _ => None,
-        }
-    }
-
-    /// The previewed world-space position of whichever vertex is being
-    /// dragged (camera, wall vertex, or door endpoint), if any. `None` for FOV
-    /// previews (aim/range), which don't move a point.
-    fn dragged_vertex_position(&self) -> Option<Point> {
-        match self {
-            DragPreview::Position { position, .. }
-            | DragPreview::WallVertex { position, .. }
-            | DragPreview::DoorEndpoint { position, .. } => Some(position.clone()),
-            DragPreview::Fov { .. } | DragPreview::None => None,
         }
     }
 }

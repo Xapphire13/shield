@@ -5,7 +5,7 @@ use dioxus_free_icons::icons::ld_icons::{
 };
 use shield_models::Camera;
 
-use crate::components::map::map_view::Tool;
+use crate::components::map::interaction::Tool;
 
 stylance::import_crate_style!(style, "src/components/map/edit_toolbar.module.css");
 

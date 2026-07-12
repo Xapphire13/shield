@@ -2,7 +2,7 @@ use dioxus::prelude::*;
 
 use crate::{
     components::{BottomToolbar, CameraList, MapView},
-    hooks::use_api_client_provider,
+    hooks::{use_api_client_provider, use_disable_page_zoom},
     pages::{Login, NotFound},
 };
 
@@ -30,6 +30,8 @@ const STYLES_CSS: Asset = asset!("/assets/styles.css");
 
 #[component]
 pub fn App() -> Element {
+    use_disable_page_zoom();
+
     rsx! {
         document::Link { rel: "stylesheet", href: GLOBAL_CSS }
         document::Link { rel: "stylesheet", href: STYLES_CSS }

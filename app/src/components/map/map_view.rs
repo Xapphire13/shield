@@ -29,7 +29,7 @@ use crate::components::map::viewport::{BUTTON_ZOOM_STEP, Viewport, WHEEL_ZOOM_ST
 use crate::components::map::zoom_controls::ZoomControls;
 use crate::hooks::{
     UseCamerasResult, UseElementRectResult, UseMapResult, after_next_layout, element_rect,
-    use_cameras, use_element_rect, use_map,
+    use_cameras, use_element_rect, use_map, use_safari_pinch,
 };
 
 /// The single map edited in v1. The service lazily returns an empty map for any
@@ -139,6 +139,27 @@ pub fn MapView() -> Element {
         // as the `ResizeObserver` hook: dropping it would invalidate the
         // registered listener's callback.
         std::rc::Rc::new(callback)
+    });
+
+    // Safari trackpad pinches only surface as `gesture*` events (see
+    // `use_safari_pinch`), so the canvas's onwheel / ontouch handlers never
+    // see them; zoom the map from them when the pinch midpoint is over the
+    // canvas. iOS Safari fires them *alongside* touch events for two-finger
+    // pinches; there the touch handlers already drive the zoom (and have set
+    // `Gesture::Pinch` by the time this fires), so bail rather than applying
+    // the zoom twice. Desktop trackpad pinches fire no touch events, leaving
+    // the gesture idle.
+    use_safari_pinch(move |factor, cx, cy| {
+        if matches!(*gesture.read(), Gesture::Pinch { .. }) {
+            return;
+        }
+        let origin = *canvas_origin.read();
+        let (width, height) = *canvas_size.read();
+        let (sx, sy) = (cx - origin.0, cy - origin.1);
+        if sx < 0.0 || sy < 0.0 || sx > width || sy > height {
+            return;
+        }
+        viewport.write().zoom_at(factor, sx, sy);
     });
 
     let placed = map.as_ref().map(|m| m.cameras.clone()).unwrap_or_default();
@@ -393,6 +414,10 @@ pub fn MapView() -> Element {
 
                 // --- Wheel zoom (desktop) ---
                 onwheel: move |evt| {
+                    // Cancel the wheel's default scroll action, which the
+                    // browser would otherwise render as elastic overscroll
+                    // (rubber-banding) alongside the zoom.
+                    evt.prevent_default();
                     let delta = evt.data().delta().strip_units().y;
                     let client = evt.data().client_coordinates();
                     let origin = *canvas_origin.read();

@@ -1,18 +1,21 @@
 use dioxus::prelude::*;
 use dioxus_free_icons::Icon;
 use dioxus_free_icons::icons::ld_icons::{LdCornerUpLeft, LdCornerUpRight};
-use shield_models::{DoorSwing, FieldOfView, MapCamera, MapDoor, MapWall, Point, WallColor};
+use shield_models::{MapCamera, MapDoor, MapWall, WallColor};
 use wasm_bindgen::JsCast;
 use wasm_bindgen::closure::Closure;
 
 use crate::components::layout::TopBar;
 use crate::components::map::camera_info::CameraInfo;
 use crate::components::map::camera_inspector::CameraInspector;
+use crate::components::map::canvas_gestures::{
+    CLOSE_LOOP_HIT_RADIUS_PX, MapCommit, PointerMoveOutcome, ToolDownAction, canvas_xy,
+    finish_wall_draft, pinch_move, pinch_start, pointer_move_transition, pointer_up_commit,
+    tool_pointer_down,
+};
 use crate::components::map::door_inspector::DoorInspector;
 use crate::components::map::edit_toolbar::{CameraPicker, EditToolbar};
-use crate::components::map::geometry::{
-    apply_drag_delta, bearing_to, content_bounds, distance, fully_contains_bounds,
-};
+use crate::components::map::geometry::{content_bounds, distance, fully_contains_bounds};
 use crate::components::map::interaction::{
     DragPreview, EscapeAction, Gesture, Selection, Tool, escape_transition,
 };
@@ -36,45 +39,7 @@ const DEFAULT_MAP_ID: &str = "default";
 /// DOM id of the canvas frame element, used to locate it for measurement.
 const CANVAS_FRAME_ID: &str = style::canvas_frame;
 
-/// Default field-of-view applied to a freshly placed camera.
-const DEFAULT_FOV: FieldOfView = FieldOfView {
-    direction_deg: 0,
-    angle_deg: 70,
-    range: 500,
-};
-
 stylance::import_crate_style!(style, "src/components/map/map_view.module.css");
-
-/// Smallest range a camera cone may be dragged to (centimeters).
-const MIN_RANGE_CM: i32 = 50;
-
-/// Screen-pixel radius (not world-space) within which a click near the
-/// first vertex of an in-progress wall draft closes the path into a loop.
-/// Screen-space, not world-space, so the target feels the same size
-/// regardless of zoom level.
-const CLOSE_LOOP_HIT_RADIUS_PX: f64 = 14.0;
-
-/// Screen-pixel radius (not world-space) within which the last two vertices
-/// of a just-finished wall draft are treated as the same double-click point
-/// (see the double-click-finish dedup below). Screen-space for the same
-/// reason as `CLOSE_LOOP_HIT_RADIUS_PX`: a world-space threshold would need
-/// to be huge at low zoom and negligible at high zoom to represent "the same
-/// physical click" either way.
-const DOUBLE_CLICK_DEDUP_RADIUS_PX: f64 = 6.0;
-
-/// Convert a pointer event to canvas-relative pixels using a cached canvas
-/// origin (the canvas's viewport-relative top-left).
-///
-/// All pointer math must share one coordinate space, but `element_coordinates`
-/// is relative to whichever child element is under the pointer — during a drag
-/// the pointer crosses the markers, cones, handles and grid, so its origin keeps
-/// changing. `client_coordinates` is viewport-relative and target-independent;
-/// subtracting the cached canvas origin yields a stable canvas-relative point
-/// that every gesture (pan / move / aim / range / wheel) can rely on.
-fn canvas_xy(evt: &PointerData, origin: (f64, f64)) -> (f64, f64) {
-    let client = evt.client_coordinates();
-    (client.x - origin.0, client.y - origin.1)
-}
 
 /// Map host: live data, pan/zoom viewport, and a full edit experience (place /
 /// select / move / aim / inspect / delete). Outside edit mode it is a read-only,
@@ -444,66 +409,26 @@ pub fn MapView() -> Element {
                 onpointerdown: move |evt| {
                     let (cx, cy) = canvas_xy(&evt.data(), *canvas_origin.read());
                     let pending = tool.read().clone();
-                    if let Tool::PlaceCamera(camera_id) = pending {
-                        let (wx, wy) = viewport.read().screen_to_world(cx, cy);
-                        place_camera(MapCamera {
-                            camera_id: camera_id.clone(),
-                            position: Point { x: wx.round() as i32, y: wy.round() as i32 },
-                            fov: DEFAULT_FOV,
-                        });
-                        tool.set(Tool::Select);
-                        selection.set(Some(Selection::Camera(camera_id)));
-                        return;
-                    }
-                    if let Tool::DrawWall { mut vertices } = pending {
-                        let (wx, wy) = viewport.read().screen_to_world(cx, cy);
-                        let world_point = Point { x: wx.round() as i32, y: wy.round() as i32 };
-
-                        // Close-loop hit-test: only meaningful once there's an
-                        // actual loop to close (need >= 3 vertices before
-                        // "closing" makes geometric sense — with fewer points
-                        // it would just double back on itself).
-                        if vertices.len() >= 3 {
-                            let (v0_sx, v0_sy) = viewport
-                                .read()
-                                .world_to_screen(vertices[0].x as f64, vertices[0].y as f64);
-                            if distance(cx, cy, v0_sx, v0_sy) <= CLOSE_LOOP_HIT_RADIUS_PX {
-                                place_wall(MapWall {
-                                    id: uuid::Uuid::new_v4().to_string(),
-                                    vertices,
-                                    closed: true,
-                                    color: WallColor::default(),
-                                });
+                    if let Some(action) = tool_pointer_down(pending, *viewport.read(), cx, cy) {
+                        match action {
+                            ToolDownAction::PlaceCamera(camera) => {
+                                let camera_id = camera.camera_id.clone();
+                                place_camera(camera);
                                 tool.set(Tool::Select);
-                                return;
+                                selection.set(Some(Selection::Camera(camera_id)));
                             }
-                        }
-
-                        vertices.push(world_point);
-                        tool.set(Tool::DrawWall { vertices });
-                        return;
-                    }
-                    if let Tool::PlaceDoor { start } = pending {
-                        let (wx, wy) = viewport.read().screen_to_world(cx, cy);
-                        let world_point = Point { x: wx.round() as i32, y: wy.round() as i32 };
-                        match start {
-                            None => {
-                                tool.set(Tool::PlaceDoor { start: Some(world_point) });
+                            ToolDownAction::CloseWallLoop(wall) => {
+                                place_wall(wall);
+                                tool.set(Tool::Select);
                             }
-                            Some(start_point) => {
-                                // A door is always exactly two points, so the
-                                // second click both finishes AND commits in one
-                                // step — unlike wall drafting there is no
-                                // separate "finish" affordance. The newly
-                                // placed door is deliberately left unselected,
-                                // same as a newly-drawn wall: selecting it
-                                // requires a follow-up tap on the opening line.
-                                place_door(MapDoor {
-                                    id: uuid::Uuid::new_v4().to_string(),
-                                    start: start_point,
-                                    end: world_point,
-                                    swing: DoorSwing::default(),
-                                });
+                            ToolDownAction::ExtendWallDraft(vertices) => {
+                                tool.set(Tool::DrawWall { vertices });
+                            }
+                            ToolDownAction::SetDoorStart(start) => {
+                                tool.set(Tool::PlaceDoor { start: Some(start) });
+                            }
+                            ToolDownAction::PlaceDoor(door) => {
+                                place_door(door);
                                 tool.set(Tool::Select);
                             }
                         }
@@ -522,158 +447,49 @@ pub fn MapView() -> Element {
                 onpointermove: move |evt| {
                     let (cx, cy) = canvas_xy(&evt.data(), *canvas_origin.read());
                     cursor_pos.set(Some((cx, cy)));
-                    let current = gesture.read().clone();
-                    match current {
-                        Gesture::Pan { last_x, last_y } => {
-                            viewport.write().pan_by(cx - last_x, cy - last_y);
-                            gesture.set(Gesture::Pan { last_x: cx, last_y: cy });
+                    let outcome = pointer_move_transition(
+                        &gesture.read().clone(),
+                        &drag_preview.read().clone(),
+                        *viewport.read(),
+                        &placed,
+                        &placed_walls,
+                        &placed_doors,
+                        cx,
+                        cy,
+                    );
+                    match outcome {
+                        PointerMoveOutcome::None => {}
+                        PointerMoveOutcome::Pan { dx, dy, next } => {
+                            viewport.write().pan_by(dx, dy);
+                            gesture.set(next);
                         }
-                        Gesture::MoveCamera { camera_id, last_x, last_y } => {
-                            let zoom = viewport.read().zoom;
-                            let base = drag_preview
-                                .read()
-                                .position_for(&camera_id)
-                                .or_else(|| {
-                                    placed
-                                        .iter()
-                                        .find(|c| c.camera_id == camera_id)
-                                        .map(|c| c.position.clone())
-                                });
-                            if let Some(base) = base {
-                                let position = apply_drag_delta(base, cx, cy, last_x, last_y, zoom);
-                                drag_preview
-                                    .set(DragPreview::Position {
-                                        camera_id: camera_id.clone(),
-                                        position,
-                                    });
-                                gesture
-                                    .set(Gesture::MoveCamera {
-                                        camera_id,
-                                        last_x: cx,
-                                        last_y: cy,
-                                    });
+                        PointerMoveOutcome::Preview { preview, next } => {
+                            drag_preview.set(preview);
+                            if let Some(next) = next {
+                                gesture.set(next);
                             }
                         }
-                        Gesture::AimCamera { camera_id } => {
-                            if let Some(camera) = placed.iter().find(|c| c.camera_id == camera_id) {
-                                let (wx, wy) = viewport.read().screen_to_world(cx, cy);
-                                let direction_deg = bearing_to(
-                                    camera.position.x as f64,
-                                    camera.position.y as f64,
-                                    wx,
-                                    wy,
-                                );
-                                let fov = FieldOfView {
-                                    direction_deg,
-                                    ..drag_preview.read().fov_for(&camera_id).unwrap_or(camera.fov.clone())
-                                };
-                                drag_preview.set(DragPreview::Fov { camera_id, fov });
-                            }
-                        }
-                        Gesture::RangeCamera { camera_id } => {
-                            if let Some(camera) = placed.iter().find(|c| c.camera_id == camera_id) {
-                                let (wx, wy) = viewport.read().screen_to_world(cx, cy);
-                                let dist = distance(
-                                    camera.position.x as f64,
-                                    camera.position.y as f64,
-                                    wx,
-                                    wy,
-                                );
-                                let range = (dist.round() as i32).max(MIN_RANGE_CM);
-                                let fov = FieldOfView {
-                                    range,
-                                    ..drag_preview.read().fov_for(&camera_id).unwrap_or(camera.fov.clone())
-                                };
-                                drag_preview.set(DragPreview::Fov { camera_id, fov });
-                            }
-                        }
-                        Gesture::MoveWallVertex { wall_id, vertex_index, last_x, last_y } => {
-                            let zoom = viewport.read().zoom;
-                            let base = drag_preview
-                                .read()
-                                .wall_vertex_for(&wall_id, vertex_index)
-                                .or_else(|| {
-                                    placed_walls
-                                        .iter()
-                                        .find(|w| w.id == wall_id)
-                                        .and_then(|w| w.vertices.get(vertex_index).cloned())
-                                });
-                            if let Some(base) = base {
-                                let position = apply_drag_delta(base, cx, cy, last_x, last_y, zoom);
-                                drag_preview
-                                    .set(DragPreview::WallVertex {
-                                        wall_id: wall_id.clone(),
-                                        vertex_index,
-                                        position,
-                                    });
-                                gesture
-                                    .set(Gesture::MoveWallVertex {
-                                        wall_id,
-                                        vertex_index,
-                                        last_x: cx,
-                                        last_y: cy,
-                                    });
-                            }
-                        }
-                        Gesture::MoveDoorEndpoint { door_id, which, last_x, last_y } => {
-                            let zoom = viewport.read().zoom;
-                            let base = drag_preview
-                                .read()
-                                .door_endpoint_for(&door_id, which)
-                                .or_else(|| {
-                                    placed_doors
-                                        .iter()
-                                        .find(|d| d.id == door_id)
-                                        .map(|d| match which {
-                                            Endpoint::Start => d.start.clone(),
-                                            Endpoint::End => d.end.clone(),
-                                        })
-                                });
-                            if let Some(base) = base {
-                                let position = apply_drag_delta(base, cx, cy, last_x, last_y, zoom);
-                                drag_preview
-                                    .set(DragPreview::DoorEndpoint {
-                                        door_id: door_id.clone(),
-                                        which,
-                                        position,
-                                    });
-                                gesture
-                                    .set(Gesture::MoveDoorEndpoint {
-                                        door_id,
-                                        which,
-                                        last_x: cx,
-                                        last_y: cy,
-                                    });
-                            }
-                        }
-                        Gesture::None | Gesture::Pinch { .. } => {}
                     }
                 },
                 onpointerup: move |_| {
                     // Commit exactly one edit for the gesture that just ended.
-                    let current = gesture.read().clone();
-                    match current {
-                        Gesture::MoveCamera { camera_id, .. } => {
-                            if let DragPreview::Position { position, .. } = drag_preview.read().clone() {
+                    if let Some(commit) =
+                        pointer_up_commit(&gesture.read().clone(), &drag_preview.read().clone())
+                    {
+                        match commit {
+                            MapCommit::MoveCamera { camera_id, position } => {
                                 move_camera((camera_id, position));
                             }
-                        }
-                        Gesture::AimCamera { camera_id } | Gesture::RangeCamera { camera_id } => {
-                            if let DragPreview::Fov { fov, .. } = drag_preview.read().clone() {
+                            MapCommit::AimCamera { camera_id, fov } => {
                                 aim_camera((camera_id, fov));
                             }
-                        }
-                        Gesture::MoveWallVertex { wall_id, vertex_index, .. } => {
-                            if let DragPreview::WallVertex { position, .. } = drag_preview.read().clone() {
+                            MapCommit::MoveWallVertex { wall_id, vertex_index, position } => {
                                 move_wall_vertex((wall_id, vertex_index, position));
                             }
-                        }
-                        Gesture::MoveDoorEndpoint { door_id, which, .. } => {
-                            if let DragPreview::DoorEndpoint { position, .. } = drag_preview.read().clone() {
-                                move_door_endpoint((door_id, which == Endpoint::Start, position));
+                            MapCommit::MoveDoorEndpoint { door_id, start, position } => {
+                                move_door_endpoint((door_id, start, position));
                             }
                         }
-                        _ => {}
                     }
                     drag_preview.set(DragPreview::None);
                     gesture.set(Gesture::None);
@@ -687,43 +503,11 @@ pub fn MapView() -> Element {
                 },
 
                 // --- Finish an open wall path (double-click) ---
+                // See `finish_wall_draft` for the trailing-vertex dedup.
                 ondoubleclick: move |_| {
-                    let Tool::DrawWall { mut vertices } = tool.read().clone() else { return; };
-
-                    // A double-click is physically two separate clicks in quick
-                    // succession, both of which already ran through
-                    // onpointerdown above and each pushed a vertex at
-                    // (approximately) the same point. Drop that trailing
-                    // duplicate so finishing a path doesn't leave a spurious
-                    // extra vertex at the exact spot the user double-clicked.
-                    if vertices.len() >= 2 {
-                        let last = vertices.len() - 1;
-                        // Screen-space, not world-space: both points came from
-                        // clicks at essentially the same physical pixel, but
-                        // that maps to wildly different world-cm distances
-                        // depending on zoom (e.g. 1px is 50 world-cm at
-                        // MIN_ZOOM), so a fixed world-space threshold either
-                        // over- or under-fires depending on zoom level.
-                        let (last_sx, last_sy) = viewport
-                            .read()
-                            .world_to_screen(vertices[last].x as f64, vertices[last].y as f64);
-                        let (prev_sx, prev_sy) = viewport.read().world_to_screen(
-                            vertices[last - 1].x as f64,
-                            vertices[last - 1].y as f64,
-                        );
-                        let d = distance(last_sx, last_sy, prev_sx, prev_sy);
-                        if d < DOUBLE_CLICK_DEDUP_RADIUS_PX {
-                            vertices.pop();
-                        }
-                    }
-
-                    if vertices.len() >= 2 {
-                        place_wall(MapWall {
-                            id: uuid::Uuid::new_v4().to_string(),
-                            vertices,
-                            closed: false,
-                            color: WallColor::default(),
-                        });
+                    let Tool::DrawWall { vertices } = tool.read().clone() else { return; };
+                    if let Some(wall) = finish_wall_draft(vertices, *viewport.read()) {
+                        place_wall(wall);
                     }
                     tool.set(Tool::Select);
                 },
@@ -734,10 +518,7 @@ pub fn MapView() -> Element {
                     if touches.len() == 2 {
                         let a = touches[0].client_coordinates();
                         let b = touches[1].client_coordinates();
-                        gesture
-                            .set(Gesture::Pinch {
-                                last_distance: distance(a.x, a.y, b.x, b.y),
-                            });
+                        gesture.set(pinch_start((a.x, a.y), (b.x, b.y)));
                     }
                 },
                 ontouchmove: move |evt| {
@@ -748,14 +529,11 @@ pub fn MapView() -> Element {
                     {
                         let a = touches[0].client_coordinates();
                         let b = touches[1].client_coordinates();
-                        let dist = distance(a.x, a.y, b.x, b.y);
-                        let cx = (a.x + b.x) / 2.0;
-                        let cy = (a.y + b.y) / 2.0;
-                        if last_distance > 0.0 {
-                            let factor = dist / last_distance;
-                            viewport.write().zoom_at(factor, cx, cy);
+                        let update = pinch_move(last_distance, (a.x, a.y), (b.x, b.y));
+                        if let Some(factor) = update.factor {
+                            viewport.write().zoom_at(factor, update.anchor.0, update.anchor.1);
                         }
-                        gesture.set(Gesture::Pinch { last_distance: dist });
+                        gesture.set(update.next);
                     }
                 },
                 ontouchend: move |_| {

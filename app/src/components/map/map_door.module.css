@@ -1,0 +1,69 @@
+/* Placed door: a freestanding gap/marker, not a solid boundary — styled
+   noticeably lighter/thinner than the wall stroke (stroke-width 6, see
+   `map_wall.module.css`) so it reads as an opening rather than a wall. Purely
+   decorative — `pointer-events: none`, since the invisible `.hit_area`
+   (below) owns clicking. Its width is in world-space cm, so it scales with
+   zoom. */
+.opening {
+    stroke: var(--color-text-muted);
+    stroke-width: 3;
+    stroke-dasharray: 8 6;
+    pointer-events: none;
+}
+
+/* Invisible click target, layered over the visible opening line. A constant
+   screen-pixel width (`non-scaling-stroke`) rather than the visible line's
+   world-space width, so the door stays comfortably clickable even when
+   zoomed out far enough to shrink the visible line to a sliver — same
+   rationale as the wall's `.hit_area`. */
+.hit_area {
+    stroke: transparent;
+    stroke-width: 20px;
+    vector-effect: non-scaling-stroke;
+    pointer-events: stroke;
+}
+
+/* Keyed on `data-interactive`, not `data-editing` — a door stays inert (no
+   pointer affordance) while a different tool is armed or a picker is open,
+   even though the map is still in edit mode. */
+.container[data-interactive="true"] .hit_area {
+    cursor: pointer;
+}
+
+.leaf {
+    stroke: var(--color-text-muted);
+    stroke-width: 3;
+}
+
+.swing_arc {
+    stroke: var(--color-text-muted);
+    stroke-width: 2;
+    stroke-dasharray: 4 4;
+}
+
+/* Selected door: emphasize all three strokes, same treatment as a selected
+   wall's stroke. */
+.container[data-selected="true"] .opening {
+    stroke: var(--color-accent);
+    stroke-width: 4;
+}
+
+.container[data-selected="true"] .leaf {
+    stroke: var(--color-accent);
+    stroke-width: 4;
+}
+
+.container[data-selected="true"] .swing_arc {
+    stroke: var(--color-accent);
+    stroke-width: 2.5;
+}
+
+/* On-canvas endpoint drag handles for the selected door, shown once selected
+   and editing. Same visual weight as the wall's `.vertex_handle`. */
+.endpoint_handle {
+    fill: var(--color-surface);
+    stroke: var(--color-text);
+    stroke-width: 1.5px;
+    vector-effect: non-scaling-stroke;
+    cursor: move;
+}

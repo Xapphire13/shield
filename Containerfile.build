@@ -11,4 +11,9 @@ RUN rustup target add wasm32-unknown-unknown
 # Dioxus CLI for bundling the web app (matches dioxus 0.7.x in the workspace)
 RUN cargo install dioxus-cli --locked --version "^0.7.9"
 
+# Stylance CLI for bundling scoped component CSS into app/assets/styles.css.
+# Pinned exactly to the `stylance` crate version in app/Cargo.toml so the CLI
+# and the proc macro agree on class-name hashes.
+RUN cargo install stylance-cli --locked --version "=0.8.4"
+
 WORKDIR /src

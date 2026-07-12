@@ -1,0 +1,79 @@
+/* Hand-written global styles: design tokens (custom properties), element
+   resets, and base typography. Component styles live in `*.module.css` files
+   co-located with their components (bundled into the generated `styles.css`
+   by the stylance CLI). */
+
+:root {
+    /* Stacking order for overlapping fixed-position layers (higher wins). */
+    --z-bottom-toolbar: 90;
+    --z-floating-actions: 100;
+    --z-modal: 200;
+
+    /* Material Design bottom-navigation height. */
+    --bottom-toolbar-height: 56px;
+
+    /* Height of the persistent map zoom control; the minimap stacks above it. */
+    --zoom-controls-height: 32px;
+
+    /* Surfaces, from the app backdrop up to the most-raised panels. */
+    --color-background: #0f1116;
+    --color-surface-sunken: #0b0d12;
+    --color-surface: #1c2029;
+    --color-surface-row: #2a2f3e;
+    --color-surface-selected: #404962;
+    --color-surface-highlight: #535e7a;
+
+    /* Borders. */
+    --color-border: #383f52;
+    --color-border-strong: #616e8e;
+
+    /* Text. */
+    --color-text: #ffffff;
+    --color-text-muted: #b6b6b6;
+
+    /* Accent (interactive / selected emphasis). */
+    --color-accent: #b049ff;
+    --color-accent-border: #a837ff;
+
+    /* Status. */
+    --color-danger: #fa486b;
+    --color-danger-border: #fb6180;
+    --color-warning: #f5a623;
+    --color-recording: red;
+
+    /* Curated wall/fence color palette (not arbitrary hex input) — lets the
+       user visually distinguish wall types (e.g. exterior vs. interior vs.
+       fence) from a small fixed set. */
+    --wall-color-slate: #7c8aa5;
+    --wall-color-clay: #c08552;
+    --wall-color-moss: #6fae5c;
+    --wall-color-amber: #e0a730;
+    --wall-color-sky: #58b8d9;
+    --wall-color-rose: #c95a7a;
+
+    /* Overlays and shadows. */
+    --color-overlay: rgba(0, 0, 0, 0.5);
+    --color-shadow: rgba(0, 0, 0, 0.45);
+}
+
+html {
+    box-sizing: border-box;
+}
+
+*,
+*:before,
+*:after {
+    box-sizing: inherit;
+}
+
+body {
+    background-color: var(--color-background);
+    color: var(--color-text);
+    font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    margin: 0;
+}
+
+ul {
+    margin: 8px;
+    padding: 0 0 0 16px;
+}

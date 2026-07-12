@@ -3,6 +3,8 @@ use shield_models::MapWall;
 
 use crate::components::map::color_swatch_picker::WallColorCssExt;
 
+stylance::import_crate_style!(style, "src/components/map/map_wall.module.css");
+
 /// Radius (in logical cm) of a wall vertex drag handle, shown only once the
 /// wall is selected. Sized to be easy to grab without visually overwhelming
 /// the (thinner) wall stroke, similar in spirit to `MARKER_RADIUS_CM` in
@@ -15,11 +17,11 @@ const VERTEX_HANDLE_RADIUS_CM: f64 = 18.0;
 ///
 /// Selectable via a pointer-down on an invisible, constant-width hit area
 /// layered over the (purely decorative, world-scaled) visible stroke — see
-/// `.map-wall__hit-area` in `main.css`. Once selected (and in edit mode) each
+/// `.hit_area` in the co-located CSS module. Once selected (and in edit mode) each
 /// vertex gets an on-canvas drag handle for reshaping the path. There is no
 /// whole-wall drag — only individual vertices move. The visible stroke's
 /// color reflects the wall's chosen [`WallColor`](shield_models::WallColor),
-/// fed in via a CSS custom property (see `.map-wall__stroke` in `main.css`)
+/// fed in via a CSS custom property (see `.stroke` in the CSS module)
 /// rather than an inline `stroke`, so the selection-highlight rule can still
 /// override it through normal cascade/specificity.
 #[component]
@@ -47,20 +49,20 @@ pub fn MapWallPath(
     let d = wall_path_d(&wall);
     rsx! {
         g {
-            class: "map-wall",
+            class: style::container,
             "data-selected": selected,
             "data-interactive": interactive,
             path {
-                class: "map-wall__stroke",
+                class: style::stroke,
                 d: "{d}",
                 fill: "none",
                 style: "--wall-stroke-color: var(--wall-color-{wall.color.css_name()});",
             }
             // Invisible, constant-width click target layered over the visible
-            // stroke — see `.map-wall__hit-area` for why this is separate
+            // stroke — see `.hit_area` in the CSS module for why this is separate
             // from the (world-scaled, purely decorative) stroke above.
             path {
-                class: "map-wall__hit-area",
+                class: style::hit_area,
                 d: "{d}",
                 fill: "none",
                 onpointerdown: move |evt: Event<PointerData>| {
@@ -76,7 +78,7 @@ pub fn MapWallPath(
                 for (i , v) in wall.vertices.iter().enumerate() {
                     circle {
                         key: "{i}",
-                        class: "map-wall__vertex-handle",
+                        class: style::vertex_handle,
                         cx: "{v.x}",
                         cy: "{v.y}",
                         r: "{VERTEX_HANDLE_RADIUS_CM}",

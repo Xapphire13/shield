@@ -1,6 +1,8 @@
 use dioxus::prelude::*;
 use shield_models::{FieldOfView, MapCamera};
 
+stylance::import_crate_style!(style, "src/components/map/map_camera.module.css");
+
 /// Radius (in logical cm) of the camera marker dot. Drawn in logical/world
 /// space so it scales with zoom along with everything else. Public so bounds
 /// computation can match the actual rendered marker extent.
@@ -88,19 +90,19 @@ pub fn MapCameraMarker(
 
     rsx! {
         g {
-            class: "map-camera",
+            class: style::container,
             "data-selected": selected,
             "data-orphaned": orphaned,
             "data-editing": editing,
             "data-interactive": interactive,
             // Field-of-view wedge.
-            path { class: "map-camera__fov", d: "{cone_path}" }
+            path { class: style::fov, d: "{cone_path}" }
 
             // Selected cameras get on-canvas handles for direct manipulation.
             if selected && interactive {
                 // Guide line from the marker to the aim/range handles.
                 line {
-                    class: "map-camera__guide",
+                    class: style::guide,
                     x1: "{cx}",
                     y1: "{cy}",
                     x2: "{range_x}",
@@ -108,7 +110,7 @@ pub fn MapCameraMarker(
                 }
                 // Aim handle (rotates the cone).
                 circle {
-                    class: "map-camera__handle map-camera__handle--aim",
+                    class: "{style::handle} {style::aim}",
                     cx: "{aim_x}",
                     cy: "{aim_y}",
                     r: "{MARKER_RADIUS_CM * 0.8}",
@@ -121,7 +123,7 @@ pub fn MapCameraMarker(
                 }
                 // Range handle (lengthens / shortens the cone).
                 circle {
-                    class: "map-camera__handle map-camera__handle--range",
+                    class: "{style::handle} {style::range}",
                     cx: "{range_x}",
                     cy: "{range_y}",
                     r: "{MARKER_RADIUS_CM * 0.8}",
@@ -137,7 +139,7 @@ pub fn MapCameraMarker(
             // Camera marker. In edit mode a pointer-down here starts a move and
             // is stopped from bubbling so the canvas does not also start a pan.
             circle {
-                class: "map-camera__marker",
+                class: style::marker,
                 cx: "{cx}",
                 cy: "{cy}",
                 r: "{MARKER_RADIUS_CM}",

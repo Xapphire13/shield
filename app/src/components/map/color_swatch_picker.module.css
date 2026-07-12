@@ -1,0 +1,43 @@
+/* Row of curated color swatches in the wall inspector. */
+.container {
+    display: flex;
+    gap: 8px;
+    padding: 8px 0;
+}
+
+.swatch {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    padding: 0;
+}
+
+.swatch[data-color="slate"] {
+    background: var(--wall-color-slate);
+}
+
+.swatch[data-color="clay"] {
+    background: var(--wall-color-clay);
+}
+
+.swatch[data-color="moss"] {
+    background: var(--wall-color-moss);
+}
+
+.swatch[data-color="amber"] {
+    background: var(--wall-color-amber);
+}
+
+.swatch[data-color="sky"] {
+    background: var(--wall-color-sky);
+}
+
+.swatch[data-color="rose"] {
+    background: var(--wall-color-rose);
+}
+
+.swatch[data-selected="true"] {
+    border-color: var(--color-text);
+}

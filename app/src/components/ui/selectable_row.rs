@@ -1,5 +1,7 @@
 use dioxus::prelude::*;
 
+stylance::import_crate_style!(style, "src/components/ui/selectable_row.module.css");
+
 #[component]
 pub fn SelectableRow(
     header: String,
@@ -10,14 +12,14 @@ pub fn SelectableRow(
 ) -> Element {
     rsx! {
         div {
-            class: "selectable-row",
+            class: style::container,
             "data-selected": selected,
             onclick: move |event| on_click.call(event),
 
-            div { class: "selectable-row__content",
+            div { class: style::content,
                 div {
-                    div { class: "selectable-row__header", {header} }
-                    div { class: "selectable-row__sub-header", {sub_header} }
+                    div { class: style::header, {header} }
+                    div { class: style::sub_header, {sub_header} }
                 }
             }
 

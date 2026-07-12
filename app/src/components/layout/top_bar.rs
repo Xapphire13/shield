@@ -1,5 +1,7 @@
 use dioxus::prelude::*;
 
+stylance::import_crate_style!(style, "src/components/layout/top_bar.module.css");
+
 /// Shared top bar for the primary views: a fixed-height bar with a centered
 /// title flanked by optional side controls.
 ///
@@ -15,12 +17,12 @@ pub fn TopBar(
     #[props(default = rsx! {})] actions: Element,
 ) -> Element {
     rsx! {
-        div { class: "top-bar",
-            div { class: "top-bar__start", {start} }
+        div { class: style::container,
+            div { class: style::start, {start} }
 
-            span { class: "top-bar__title", {title} }
+            span { class: style::title, {title} }
 
-            div { class: "top-bar__actions", {actions} }
+            div { class: style::actions, {actions} }
         }
     }
 }

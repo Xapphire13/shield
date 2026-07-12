@@ -2,6 +2,11 @@ use dioxus::prelude::*;
 
 use crate::components::buttons::base_button::BaseButton;
 
+stylance::import_crate_style!(
+    style,
+    "src/components/ui/buttons/secondary_button.module.css"
+);
+
 #[component]
 pub fn SecondaryButton(
     class: Option<String>,
@@ -11,7 +16,7 @@ pub fn SecondaryButton(
 ) -> Element {
     rsx! {
         BaseButton {
-            class: "secondary-button",
+            class: style::button,
             on_press,
             disabled,
             children,

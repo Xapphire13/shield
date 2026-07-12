@@ -1,0 +1,80 @@
+/* A placed camera: marker dot + translucent field-of-view wedge. */
+.fov {
+    fill: var(--color-accent);
+    fill-opacity: 0.18;
+    stroke: var(--color-accent-border);
+    /* Hairline edge independent of zoom. */
+    stroke-width: 1px;
+    vector-effect: non-scaling-stroke;
+    stroke-opacity: 0.5;
+}
+
+.marker {
+    fill: var(--color-accent);
+    stroke: var(--color-text);
+    stroke-width: 1.5px;
+    vector-effect: non-scaling-stroke;
+}
+
+/* Interactive markers can be repositioned. Keyed on `data-interactive`, not
+   `data-editing` — edit mode alone isn't enough, since a marker stays inert
+   (no drag affordance) while a different tool is armed or a picker is open,
+   even though the map is still in edit mode. */
+.container[data-interactive="true"] .marker {
+    cursor: move;
+}
+
+/* In view mode the marker is clickable (opens the read-only info popover). */
+.container[data-editing="false"] .marker {
+    cursor: pointer;
+}
+
+/* Selected camera: emphasize its marker and cone. */
+.container[data-selected="true"] .marker {
+    stroke: var(--color-text);
+    stroke-width: 2.5px;
+}
+
+.container[data-selected="true"] .fov {
+    fill-opacity: 0.28;
+    stroke-opacity: 0.9;
+}
+
+/* Orphaned camera (underlying camera deleted): muted, distinct styling. */
+.container[data-orphaned="true"] .marker {
+    fill: var(--color-text-muted);
+}
+
+.container[data-orphaned="true"] .fov {
+    fill: var(--color-text-muted);
+    stroke: var(--color-text-muted);
+    stroke-dasharray: 6 4;
+}
+
+/* On-canvas manipulation handles for the selected camera. */
+.guide {
+    stroke: var(--color-text);
+    stroke-width: 1px;
+    stroke-dasharray: 4 4;
+    stroke-opacity: 0.6;
+    vector-effect: non-scaling-stroke;
+}
+
+.handle {
+    fill: var(--color-surface);
+    stroke: var(--color-text);
+    stroke-width: 1.5px;
+    vector-effect: non-scaling-stroke;
+}
+
+/* Aim handle rotates the cone — a crosshair signals "point it here". */
+.aim {
+    fill: var(--color-accent);
+    cursor: crosshair;
+}
+
+/* Range handle resizes the cone length — a resize cursor signals "drag out". */
+.range {
+    fill: var(--color-surface-highlight);
+    cursor: nesw-resize;
+}

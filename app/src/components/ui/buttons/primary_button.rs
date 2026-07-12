@@ -2,6 +2,8 @@ use dioxus::prelude::*;
 
 use crate::components::buttons::base_button::BaseButton;
 
+stylance::import_crate_style!(style, "src/components/ui/buttons/primary_button.module.css");
+
 #[component]
 pub fn PrimaryButton(
     class: Option<String>,
@@ -11,7 +13,7 @@ pub fn PrimaryButton(
 ) -> Element {
     rsx! {
         BaseButton {
-            class: "primary-button",
+            class: style::button,
             on_press,
             disabled,
             children,

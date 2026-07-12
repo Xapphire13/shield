@@ -1,6 +1,8 @@
 use dioxus::prelude::*;
 use shield_models::{DoorSwing, MapDoor};
 
+stylance::import_crate_style!(style, "src/components/map/map_door.module.css");
+
 /// Radius (in logical cm) of a door endpoint drag handle, shown only once the
 /// door is selected. Sized consistently with `map_wall.rs`'s
 /// `VERTEX_HANDLE_RADIUS_CM`.
@@ -25,7 +27,7 @@ pub enum Endpoint {
 ///
 /// Selectable via a pointer-down on an invisible, constant-width hit area
 /// layered over the (purely decorative, world-scaled) opening line — see
-/// `.map-door__hit-area` in `main.css`, same technique `MapWallPath` uses.
+/// `.hit_area` in the co-located CSS module, same technique `MapWallPath` uses.
 /// Once selected (and in edit mode) each endpoint gets an on-canvas drag
 /// handle for reshaping / repositioning it. There is no whole-door drag —
 /// only individual endpoints move, same "select-only on body, drag only via
@@ -56,21 +58,21 @@ pub fn MapDoorMarker(
     let (open_x, open_y) = swing_open_point(&door);
     rsx! {
         g {
-            class: "map-door",
+            class: style::container,
             "data-selected": selected,
             "data-interactive": interactive,
             line {
-                class: "map-door__opening",
+                class: style::opening,
                 x1: "{door.start.x}",
                 y1: "{door.start.y}",
                 x2: "{door.end.x}",
                 y2: "{door.end.y}",
             }
             // Invisible, constant-width click target layered over the visible
-            // opening line — see `.map-door__hit-area` for why this is
+            // opening line — see `.hit_area` in the CSS module for why this is
             // separate from the (world-scaled, purely decorative) line above.
             line {
-                class: "map-door__hit-area",
+                class: style::hit_area,
                 x1: "{door.start.x}",
                 y1: "{door.start.y}",
                 x2: "{door.end.x}",
@@ -85,20 +87,20 @@ pub fn MapDoorMarker(
                 },
             }
             line {
-                class: "map-door__leaf",
+                class: style::leaf,
                 x1: "{door.start.x}",
                 y1: "{door.start.y}",
                 x2: "{open_x}",
                 y2: "{open_y}",
             }
             path {
-                class: "map-door__swing-arc",
+                class: style::swing_arc,
                 d: "{swing_arc_d(&door, open_x, open_y)}",
                 fill: "none",
             }
             if selected && interactive {
                 circle {
-                    class: "map-door__endpoint-handle",
+                    class: style::endpoint_handle,
                     cx: "{door.start.x}",
                     cy: "{door.start.y}",
                     r: "{ENDPOINT_HANDLE_RADIUS_CM}",
@@ -110,7 +112,7 @@ pub fn MapDoorMarker(
                     },
                 }
                 circle {
-                    class: "map-door__endpoint-handle",
+                    class: style::endpoint_handle,
                     cx: "{door.end.x}",
                     cy: "{door.end.y}",
                     r: "{ENDPOINT_HANDLE_RADIUS_CM}",

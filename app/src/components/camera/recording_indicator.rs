@@ -1,5 +1,10 @@
 use dioxus::prelude::*;
 
+stylance::import_crate_style!(
+    style,
+    "src/components/camera/recording_indicator.module.css"
+);
+
 #[component]
 pub fn RecordingIndicator(is_recording: bool) -> Element {
     // let fill = if is_recording { "red" } else { "#B6B6B6" };
@@ -8,7 +13,7 @@ pub fn RecordingIndicator(is_recording: bool) -> Element {
         svg {
             width: "16px",
             height: "16px",
-            class: "recording-indicator",
+            class: style::container,
             "data-recording": is_recording,
 
             // Outer circle

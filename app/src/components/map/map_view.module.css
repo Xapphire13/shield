@@ -1,0 +1,172 @@
+/* Map view: full-screen column stacking a flush top bar above the canvas. */
+.container {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Frame fills the area below the top bar and carries the visual inset as
+   margin: a gap below the top bar, comfortable side margins, and bottom spacing
+   that still clears the fixed bottom nav / edit strip. It is the positioning
+   context for the svg and the element we measure: a div's rect is reliable,
+   whereas a percentage-sized <svg> without a viewBox collapses to its intrinsic
+   300x150 on WebKit. */
+.canvas_frame {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    margin: 12px 16px calc(16px + var(--bottom-toolbar-height));
+}
+
+.canvas {
+    /* Absolute inset:0 against the relative frame gives the svg a definite box
+       from its containing block, bypassing the SVG intrinsic-size quirk. */
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    background-color: var(--color-surface-sunken);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    /* Avoid text selection / native gestures while panning + pinching. */
+    user-select: none;
+    -webkit-user-select: none;
+    cursor: grab;
+}
+
+/* Cursor reflects the active gesture (driven by the `data-gesture` attribute)
+   so it stays stable while dragging, even as the pointer crosses child
+   elements. */
+.canvas[data-gesture="pan"] {
+    cursor: grabbing;
+}
+
+/* Repositioning a camera origin is a move, distinct from panning the canvas. */
+.canvas[data-gesture="move"] {
+    cursor: move;
+}
+
+.canvas[data-gesture="aim"] {
+    cursor: crosshair;
+}
+
+.canvas[data-gesture="range"] {
+    cursor: nesw-resize;
+}
+
+/* While awaiting a placement tap, hint that the canvas is a drop target. */
+.canvas[data-placing="true"] {
+    cursor: crosshair;
+}
+
+/* Drawing a wall path uses the same crosshair affordance as camera placement,
+   kept as a separate attribute since the two interactions are conceptually
+   distinct and may diverge later. */
+.canvas[data-drawing-wall="true"] {
+    cursor: crosshair;
+}
+
+/* Map-specific controls hosted in the top bar's side zones. */
+.topbar_icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* Keep the icon buttons within the bar height so they don't grow it. */
+    height: 32px;
+    width: 32px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    color: var(--color-text);
+    border-radius: 4px;
+    padding: 6px;
+    cursor: pointer;
+}
+
+.topbar_icon:disabled {
+    color: var(--color-text-muted);
+    border-color: var(--color-border);
+    cursor: default;
+    opacity: 0.5;
+}
+
+.topbar_edit {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    color: var(--color-text);
+    border-radius: 4px;
+    padding: 6px 14px;
+    font-family: inherit;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.topbar_edit[data-active="true"] {
+    background: var(--color-accent);
+    border-color: var(--color-accent-border);
+}
+
+/* In-progress wall draft: committed segments so far. */
+.draft_path {
+    stroke: var(--color-accent-border);
+    stroke-width: 6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    fill: none;
+}
+
+/* Rubber-band segment from the last committed vertex to the live cursor —
+   dashed to visually distinguish "not yet committed". */
+.draft_rubber_band {
+    stroke: var(--color-accent-border);
+    stroke-width: 4;
+    stroke-dasharray: 10 8;
+    stroke-linecap: round;
+    fill: none;
+    opacity: 0.7;
+}
+
+/* A small dot at each committed vertex of the in-progress draft. */
+.draft_vertex {
+    fill: var(--color-accent);
+    stroke: var(--color-text);
+    stroke-width: 1.5px;
+    vector-effect: non-scaling-stroke;
+}
+
+/* Highlighted ring around the first vertex once the draft has enough points
+   to close into a loop — signals "click here to close". */
+.draft_close_target {
+    fill: none;
+    stroke: var(--color-accent);
+    stroke-width: 2px;
+    stroke-dasharray: 4 4;
+    vector-effect: non-scaling-stroke;
+    opacity: 0.85;
+}
+
+/* Once the cursor is within the auto-close hit radius, solidify the ring to
+   signal "release here to close the loop". */
+.draft_close_target[data-in-range="true"] {
+    fill: var(--color-accent);
+    fill-opacity: 0.25;
+    stroke-dasharray: none;
+    opacity: 1;
+}
+
+/* World-coordinate readout that follows the pointer while any placement tool
+   is active. An HTML overlay (not SVG) positioned against the canvas frame,
+   offset from the raw cursor point so the label doesn't sit under it. */
+.coord_readout {
+    position: absolute;
+    pointer-events: none;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    color: var(--color-text);
+    font-family: monospace;
+    font-size: 0.8rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    white-space: nowrap;
+}

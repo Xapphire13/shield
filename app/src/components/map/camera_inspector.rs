@@ -5,6 +5,8 @@ use shield_models::FieldOfView;
 
 use crate::components::ui::{ButtonColor, IconButton};
 
+stylance::import_crate_style!(style, "src/components/map/camera_inspector.module.css");
+
 /// Contextual bottom sheet for the currently selected map camera. Exposes
 /// sliders for the field-of-view (direction / field-of-view angle / range) and a
 /// delete action.
@@ -33,10 +35,10 @@ pub fn CameraInspector(
     let orphaned = name.is_none();
 
     rsx! {
-        div { class: "camera-inspector",
-            div { class: "camera-inspector__header",
+        div { class: style::container,
+            div { class: style::header,
                 div {
-                    class: "camera-inspector__title",
+                    class: style::title,
                     "data-orphaned": orphaned,
                     "{title}"
                 }
@@ -50,7 +52,7 @@ pub fn CameraInspector(
             }
 
             if orphaned {
-                div { class: "camera-inspector__note",
+                div { class: style::note,
                     "This camera no longer exists. Remove it from the map."
                 }
             }
@@ -150,10 +152,10 @@ fn FovSlider(
     on_change: Callback<i32>,
 ) -> Element {
     rsx! {
-        label { class: "camera-inspector__field",
-            div { class: "camera-inspector__field-label",
+        label { class: style::field,
+            div { class: style::field_label,
                 span { "{label}" }
-                span { class: "camera-inspector__field-value", "{value}{unit}" }
+                span { class: style::field_value, "{value}{unit}" }
             }
             input {
                 r#type: "range",

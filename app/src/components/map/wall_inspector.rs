@@ -6,6 +6,8 @@ use shield_models::{MapWall, WallColor};
 use crate::components::map::color_swatch_picker::ColorSwatchPicker;
 use crate::components::ui::{ButtonColor, IconButton};
 
+stylance::import_crate_style!(style, "src/components/map/wall_inspector.module.css");
+
 /// Contextual bottom sheet for the currently selected wall. Vertex
 /// repositioning happens via the on-canvas handles (see `MapWallPath`); this
 /// sheet exposes actions that don't have a natural on-canvas gesture:
@@ -20,9 +22,9 @@ pub fn WallInspector(
     on_delete: Callback,
 ) -> Element {
     rsx! {
-        div { class: "wall-inspector",
-            div { class: "wall-inspector__header",
-                div { class: "wall-inspector__title", "Wall" }
+        div { class: style::container,
+            div { class: style::header,
+                div { class: style::title, "Wall" }
                 IconButton {
                     icon: rsx! {
                         Icon { width: 20, height: 20, icon: LdTrash2 }
@@ -34,7 +36,7 @@ pub fn WallInspector(
             ColorSwatchPicker { value: wall.color, on_change: on_recolor }
             if !wall.closed && wall.vertices.len() >= 3 {
                 button {
-                    class: "wall-inspector__close-loop",
+                    class: style::close_loop,
                     onclick: move |_| on_close_loop(()),
                     "Close loop"
                 }

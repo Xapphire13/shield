@@ -1,6 +1,8 @@
 use dioxus::prelude::*;
 use shield_models::WallColor;
 
+stylance::import_crate_style!(style, "src/components/map/color_swatch_picker.module.css");
+
 /// Maps a [`WallColor`] to the CSS custom-property suffix used to render it
 /// (`--wall-color-{suffix}`). Lives in `app`, not `models`, since `models` is
 /// shared with `service` and has no CSS concerns.
@@ -36,11 +38,11 @@ const PALETTE: [(WallColor, &str); 6] = [
 #[component]
 pub fn ColorSwatchPicker(value: WallColor, on_change: Callback<WallColor>) -> Element {
     rsx! {
-        div { class: "color-swatch-picker",
+        div { class: style::container,
             for (color , label) in PALETTE {
                 button {
                     key: "{color.css_name()}",
-                    class: "color-swatch-picker__swatch",
+                    class: style::swatch,
                     "data-color": color.css_name(),
                     "data-selected": value == color,
                     title: "{label}",

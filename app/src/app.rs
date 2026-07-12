@@ -22,12 +22,17 @@ pub enum Route {
         NotFound { route: Vec<String> },
 }
 
-const MAIN_CSS: Asset = asset!("/assets/main.css");
+/// Hand-written global styles: root variables, resets, and shared layout.
+const GLOBAL_CSS: Asset = asset!("/assets/global.css");
+/// Scoped component styles bundled from the co-located `*.module.css` files by
+/// the stylance CLI (gitignored; `scripts/dev.sh` regenerates it on save).
+const STYLES_CSS: Asset = asset!("/assets/styles.css");
 
 #[component]
 pub fn App() -> Element {
     rsx! {
-        document::Link { rel: "stylesheet", href: MAIN_CSS }
+        document::Link { rel: "stylesheet", href: GLOBAL_CSS }
+        document::Link { rel: "stylesheet", href: STYLES_CSS }
 
         Router::<Route> {}
     }

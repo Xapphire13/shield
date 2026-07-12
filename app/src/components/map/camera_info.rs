@@ -6,6 +6,8 @@ use shield_models::Camera;
 use crate::components::ui::{ButtonColor, IconButton};
 use crate::utils::RecordingModeExtensions;
 
+stylance::import_crate_style!(style, "src/components/map/camera_info.module.css");
+
 /// Nominal popover width (px) used for the horizontal anchor/clamp math. The
 /// element's CSS width matches this so the computed left/caret offsets line up
 /// with what actually renders.
@@ -93,13 +95,13 @@ pub fn CameraInfo(
 
     rsx! {
         div {
-            class: "camera-info",
+            class: style::container,
             "data-placement": placement,
             "data-pinned": pinned,
             style: "{style}",
-            div { class: "camera-info__header",
+            div { class: style::header,
                 div {
-                    class: "camera-info__title",
+                    class: style::title,
                     "data-orphaned": orphaned,
                     "{title}"
                 }
@@ -115,11 +117,11 @@ pub fn CameraInfo(
             }
 
             if let Some(camera) = camera {
-                div { class: "camera-info__rows",
-                    div { class: "camera-info__row",
-                        span { class: "camera-info__label", "Status" }
+                div { class: style::rows,
+                    div { class: style::row,
+                        span { class: style::label, "Status" }
                         span {
-                            class: "camera-info__value",
+                            class: style::value,
                             "data-recording": camera.is_recording,
                             if camera.is_recording {
                                 "Recording"
@@ -128,30 +130,30 @@ pub fn CameraInfo(
                             }
                         }
                     }
-                    div { class: "camera-info__row",
-                        span { class: "camera-info__label", "Recording mode" }
-                        span { class: "camera-info__value",
+                    div { class: style::row,
+                        span { class: style::label, "Recording mode" }
+                        span { class: style::value,
                             "{camera.recording_settings.mode.display_name()}"
                         }
                     }
                 }
 
                 if !camera.tags.is_empty() {
-                    div { class: "camera-info__tags",
+                    div { class: style::tags,
                         for tag in camera.tags.iter() {
-                            span { key: "{tag}", class: "camera-info__tag", "{tag}" }
+                            span { key: "{tag}", class: style::tag, "{tag}" }
                         }
                     }
                 }
             } else {
-                div { class: "camera-info__note",
+                div { class: style::note,
                     "This camera no longer exists."
                 }
             }
 
             // Caret pointing at the marker; its side and horizontal offset are
             // driven by `data-placement` and the `--caret-left` custom property.
-            div { class: "camera-info__caret" }
+            div { class: style::caret }
         }
     }
 }

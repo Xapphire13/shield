@@ -5,6 +5,8 @@ use shield_models::MapDoor;
 
 use crate::components::ui::{ButtonColor, IconButton};
 
+stylance::import_crate_style!(style, "src/components/map/door_inspector.module.css");
+
 /// Contextual bottom sheet for the currently selected door. Endpoint
 /// repositioning happens via the on-canvas handles (see `MapDoorMarker`);
 /// this sheet exposes the one action without a natural on-canvas gesture —
@@ -18,9 +20,9 @@ pub fn DoorInspector(
     on_delete: Callback,
 ) -> Element {
     rsx! {
-        div { class: "door-inspector",
-            div { class: "door-inspector__header",
-                div { class: "door-inspector__title", "Door" }
+        div { class: style::container,
+            div { class: style::header,
+                div { class: style::title, "Door" }
                 IconButton {
                     icon: rsx! {
                         Icon { width: 20, height: 20, icon: LdTrash2 }
@@ -30,7 +32,7 @@ pub fn DoorInspector(
                 }
             }
             button {
-                class: "door-inspector__flip-swing",
+                class: style::flip_swing,
                 onclick: move |_| on_flip_swing(()),
                 "Flip swing (currently {door.swing:?})"
             }

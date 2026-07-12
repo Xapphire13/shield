@@ -1,0 +1,42 @@
+.container {
+    --bottom-gap: 24px;
+    --shadow-reach: 16px;
+
+    position: fixed;
+    left: 50%;
+    /* Float just above the fixed bottom toolbar. */
+    bottom: calc(var(--bottom-toolbar-height) + var(--bottom-gap));
+    z-index: var(--z-floating-actions);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px var(--color-shadow);
+    opacity: 0;
+    pointer-events: none;
+    /* Hidden: slide fully below the viewport — the bar's own height (100%),
+       plus the toolbar it sits above, the bottom gap and the upward reach of
+       its shadow. */
+    transform: translate(
+        -50%,
+        calc(100% + var(--bottom-toolbar-height) + var(--bottom-gap) + var(--shadow-reach))
+    );
+    transition:
+        transform 0.25s ease,
+        opacity 0.25s ease;
+}
+
+.container[data-visible="true"] {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translate(-50%, 0);
+}
+
+.separator {
+    align-self: stretch;
+    width: 1px;
+    background-color: var(--color-border);
+}

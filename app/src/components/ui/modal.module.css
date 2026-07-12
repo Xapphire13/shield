@@ -1,0 +1,32 @@
+.container {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background-color: var(--color-overlay);
+    z-index: var(--z-modal);
+}
+
+.modal {
+    background: var(--color-border);
+    padding: 16px;
+    border-radius: 8px;
+}
+
+.header {
+    font-weight: bold;
+}
+
+.body {
+    padding: 16px 0;
+}
+
+.footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}

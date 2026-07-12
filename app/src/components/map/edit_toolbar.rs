@@ -7,6 +7,8 @@ use shield_models::Camera;
 
 use crate::components::map::map_view::Tool;
 
+stylance::import_crate_style!(style, "src/components/map/edit_toolbar.module.css");
+
 /// Bottom tool strip shown while editing the map. It is positioned in the same
 /// bottom zone as the global navigation toolbar and stacks above it, visually
 /// replacing it for the duration of edit mode.
@@ -45,30 +47,30 @@ pub fn EditToolbar(
         matches!(&active_tool, Tool::DrawWall { vertices } if vertices.len() >= 2);
     let door_active = matches!(active_tool, Tool::PlaceDoor { .. });
     rsx! {
-        div { class: "edit-toolbar",
+        div { class: style::container,
             button {
-                class: "edit-toolbar__tool",
+                class: style::tool,
                 "data-active": matches!(active_tool, Tool::Select),
                 title: "Select",
                 onclick: move |_| on_select(()),
                 Icon { width: 20, height: 20, icon: LdMousePointer }
             }
             button {
-                class: "edit-toolbar__tool",
+                class: style::tool,
                 "data-active": camera_active,
                 title: "Place camera",
                 onclick: move |_| on_add_camera(()),
                 Icon { width: 20, height: 20, icon: LdVideo }
             }
             button {
-                class: "edit-toolbar__tool",
+                class: style::tool,
                 "data-active": wall_active,
                 title: "Draw wall",
                 onclick: move |_| on_draw_wall(()),
                 Icon { width: 20, height: 20, icon: LdBrickWall }
             }
             button {
-                class: "edit-toolbar__tool",
+                class: style::tool,
                 "data-active": door_active,
                 title: "Place door",
                 onclick: move |_| on_place_door(()),
@@ -76,7 +78,7 @@ pub fn EditToolbar(
             }
             if can_finish_wall {
                 button {
-                    class: "edit-toolbar__tool edit-toolbar__tool--labeled",
+                    class: "{style::tool} {style::labeled}",
                     title: "Finish wall",
                     onclick: move |_| on_finish_wall(()),
                     Icon { width: 20, height: 20, icon: LdCheck }
@@ -100,24 +102,24 @@ pub fn CameraPicker(
     on_close: Callback,
 ) -> Element {
     rsx! {
-        div { class: "camera-picker",
-            div { class: "camera-picker__header",
-                span { class: "camera-picker__title", "Add a camera" }
+        div { class: style::picker,
+            div { class: style::picker_header,
+                span { class: style::picker_title, "Add a camera" }
                 button {
-                    class: "camera-picker__close",
+                    class: style::picker_close,
                     onclick: move |_| on_close(()),
                     Icon { width: 20, height: 20, icon: LdX }
                 }
             }
 
             if cameras.is_empty() {
-                div { class: "camera-picker__empty", "All cameras are already on the map." }
+                div { class: style::picker_empty, "All cameras are already on the map." }
             } else {
-                div { class: "camera-picker__list",
+                div { class: style::picker_list,
                     for camera in cameras.iter().cloned() {
                         button {
                             key: "{camera.id}",
-                            class: "camera-picker__item",
+                            class: style::picker_item,
                             onclick: {
                                 let id = camera.id.clone();
                                 move |_| on_pick(id.clone())

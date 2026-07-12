@@ -1,0 +1,50 @@
+/* Inspector sheet for the selected wall: same bottom-sheet container styling
+   as the camera inspector, simplified (no sliders — vertex editing happens via
+   on-canvas handles, not this sheet). */
+.container {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: calc(var(--z-bottom-toolbar) + 1);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    background-color: var(--color-surface);
+    border-top: 1px solid var(--color-border);
+    border-radius: 12px 12px 0 0;
+    box-shadow: 0 -8px 24px var(--color-shadow);
+    padding: 16px;
+}
+
+.header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.title {
+    flex: 1;
+    font-weight: bold;
+    font-size: 1.1rem;
+}
+
+.close_loop {
+    display: block;
+    width: 100%;
+    text-align: center;
+    background: none;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    color: var(--color-text);
+    font-family: inherit;
+    font-size: 1rem;
+    padding: 10px 16px;
+    cursor: pointer;
+}
+
+@media (hover: hover) {
+    .close_loop:hover {
+        background-color: var(--color-surface-highlight);
+    }
+}

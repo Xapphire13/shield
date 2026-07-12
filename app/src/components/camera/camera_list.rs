@@ -9,6 +9,8 @@ use crate::{
     utils::{get_camera_ids, get_camera_names_by_ids, group_cameras_by_tags},
 };
 
+stylance::import_crate_style!(style, "src/components/camera/camera_list.module.css");
+
 /// Remove cameras that were just acted on from the current selection.
 fn deselect(selection: &mut Signal<Vec<String>>, camera_ids: &[String]) {
     selection.with_mut(|ids| ids.retain(|id| !camera_ids.contains(id)));
@@ -60,12 +62,12 @@ pub fn CameraList() -> Element {
     let tags = tags; // Remove mutability
 
     rsx! {
-        div { class: "primary-view list-view",
+        div { class: style::container,
             // Matching top bar above the scrollable list. The List has no
             // edit/history controls, so only the centered title is shown.
             TopBar { title: "Cameras" }
 
-            div { class: "list-view__content",
+            div { class: style::content,
                 if loading {
                     "Loading..."
                 }

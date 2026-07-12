@@ -1,0 +1,46 @@
+/* Lower-left floating warning that some cameras are not yet placed on the map.
+   Mirrors the minimap's bottom offset (lifted clear of the bottom nav) but hugs
+   the left edge, and shares its z-index so an open bottom sheet renders over it. */
+.container {
+    position: fixed;
+    left: 24px;
+    bottom: calc(var(--bottom-toolbar-height) + 24px);
+    z-index: calc(var(--z-bottom-toolbar) - 1);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    background-color: var(--color-overlay);
+    border: 1px solid var(--color-warning);
+    border-radius: 4px;
+    color: var(--color-warning);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.count {
+    color: var(--color-text);
+}
+
+/* Fuller hover tooltip, hidden by default and revealed only on devices with a
+   real hovering pointer, matching the project's selectable-row convention. The
+   native `title` attribute remains the fallback for touch / assistive tech. */
+.tooltip {
+    display: none;
+    position: absolute;
+    left: 0;
+    bottom: calc(100% + 6px);
+    white-space: nowrap;
+    padding: 4px 8px;
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-border-strong);
+    border-radius: 4px;
+    color: var(--color-text);
+    font-weight: 400;
+}
+
+@media (hover: hover) {
+    .container:hover .tooltip {
+        display: block;
+    }
+}

@@ -24,7 +24,7 @@ use crate::hooks::{UseCamerasResult, UseMapResult, use_cameras, use_map};
 const DEFAULT_MAP_ID: &str = "default";
 
 /// DOM id of the canvas frame element, used to locate it for measurement.
-const CANVAS_FRAME_ID: &str = "map-canvas-frame";
+const CANVAS_FRAME_ID: &str = style::canvas_frame;
 
 /// Look up the canvas frame element in the DOM by its id.
 fn canvas_frame_element() -> Option<web_sys::Element> {
@@ -63,6 +63,8 @@ const DEFAULT_FOV: FieldOfView = FieldOfView {
     angle_deg: 70,
     range: 500,
 };
+
+stylance::import_crate_style!(style, "src/components/map/map_view.module.css");
 
 /// Minimum / maximum zoom (screen px per logical cm). Panning is intentionally
 /// unconstrained, but zoom is clamped to keep the canvas usable.
@@ -874,7 +876,7 @@ pub fn MapView() -> Element {
     };
 
     rsx! {
-        div { class: "primary-view map-view",
+        div { class: style::container,
             // --- Top bar (title, undo/redo, edit toggle) ---
             // Rendered before the canvas so it sits in normal flow above it.
             // Undo/redo (edit mode only) go in the start zone; the Edit/Done
@@ -885,13 +887,13 @@ pub fn MapView() -> Element {
                 start: rsx! {
                     if is_editing {
                         button {
-                            class: "map-topbar__icon",
+                            class: style::topbar_icon,
                             disabled: !can_undo,
                             onclick: move |_| undo(()),
                             Icon { width: 18, height: 18, icon: LdCornerUpLeft }
                         }
                         button {
-                            class: "map-topbar__icon",
+                            class: style::topbar_icon,
                             disabled: !can_redo,
                             onclick: move |_| redo(()),
                             Icon { width: 18, height: 18, icon: LdCornerUpRight }
@@ -900,7 +902,7 @@ pub fn MapView() -> Element {
                 },
                 actions: rsx! {
                     button {
-                        class: "map-topbar__edit",
+                        class: style::topbar_edit,
                         "data-active": is_editing,
                         onclick: move |_| {
                             let next = !*editing.read();
@@ -930,10 +932,10 @@ pub fn MapView() -> Element {
             // exactly overlaps the frame, the frame origin is the svg origin, so
             // `canvas_xy` pointer math stays correct.
             div {
-                id: "map-canvas-frame",
-                class: "map-canvas-frame",
+                id: style::canvas_frame,
+                class: style::canvas_frame,
                 svg {
-                    class: "map-canvas",
+                    class: style::canvas,
                     "data-placing": is_placing,
                     "data-drawing-wall": is_drawing_wall,
                     "data-gesture": gesture_label,
@@ -1456,7 +1458,7 @@ pub fn MapView() -> Element {
                     // A rubber-band line from the already-placed start point to
                     // the live cursor position while the second click is still
                     // pending, same technique the wall draft's rubber-band
-                    // uses. Reuses `.map-wall-draft__rubber-band` directly
+                    // uses. Reuses `.draft_rubber_band` directly
                     // (same visual language: "a tentative, not-yet-committed
                     // line") rather than a near-duplicate class.
                     if let Tool::PlaceDoor { start: Some(point) } = &*tool.read()
@@ -1466,7 +1468,7 @@ pub fn MapView() -> Element {
                             let (wx, wy) = viewport.read().screen_to_world(cx, cy);
                             rsx! {
                                 line {
-                                    class: "map-wall-draft__rubber-band",
+                                    class: style::draft_rubber_band,
                                     x1: "{point.x}",
                                     y1: "{point.y}",
                                     x2: "{wx}",
@@ -1493,7 +1495,7 @@ pub fn MapView() -> Element {
                                 }
                                 let d = parts.join(" ");
                                 rsx! {
-                                    path { class: "map-wall-draft__path", d: "{d}" }
+                                    path { class: style::draft_path, d: "{d}" }
                                 }
                             }
                         }
@@ -1507,7 +1509,7 @@ pub fn MapView() -> Element {
                                 let (wx, wy) = viewport.read().screen_to_world(cx, cy);
                                 rsx! {
                                     line {
-                                        class: "map-wall-draft__rubber-band",
+                                        class: style::draft_rubber_band,
                                         x1: "{last.x}",
                                         y1: "{last.y}",
                                         x2: "{wx}",
@@ -1521,7 +1523,7 @@ pub fn MapView() -> Element {
                         for (i , v) in vertices.iter().enumerate() {
                             circle {
                                 key: "{i}",
-                                class: "map-wall-draft__vertex",
+                                class: style::draft_vertex,
                                 cx: "{v.x}",
                                 cy: "{v.y}",
                                 r: "{MARKER_RADIUS_CM * 0.3}",
@@ -1545,7 +1547,7 @@ pub fn MapView() -> Element {
                                 });
                                 rsx! {
                                     circle {
-                                        class: "map-wall-draft__close-target",
+                                        class: style::draft_close_target,
                                         "data-in-range": in_range,
                                         cx: "{first.x}",
                                         cy: "{first.y}",
@@ -1580,7 +1582,7 @@ pub fn MapView() -> Element {
                         rsx! {
                             if let Some((wx, wy)) = coords {
                                 div {
-                                    class: "map-coord-readout",
+                                    class: style::coord_readout,
                                     style: "left: {cx + 14.0}px; top: {cy + 14.0}px;",
                                     "{wx}, {wy} cm",
                                 }

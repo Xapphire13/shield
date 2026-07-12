@@ -1,5 +1,7 @@
 use dioxus::prelude::*;
 
+stylance::import_crate_style!(style, "src/components/ui/buttons/base_button.module.css");
+
 #[component]
 pub fn BaseButton(
     class: Option<String>,
@@ -9,7 +11,7 @@ pub fn BaseButton(
 ) -> Element {
     rsx! {
         button {
-            class: format!("button {}", class.unwrap_or(String::new())),
+            class: format!("{} {}", style::button, class.unwrap_or(String::new())),
             onclick: move |_| {
                 if let Some(on_press) = on_press {
                     on_press(())

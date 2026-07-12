@@ -1,0 +1,52 @@
+/* Bottom-right viewport navigator. Floats over the canvas, stacked ABOVE the
+   persistent zoom control (whose height plus a small gap is added to the base
+   offset — see `zoom_controls.module.css`). Its z-index sits below the bottom
+   chrome, so a taller open sheet (inspector / picker) simply renders over it. */
+.container {
+    position: fixed;
+    right: 24px;
+    bottom: calc(
+        var(--bottom-toolbar-height) + 24px + var(--zoom-controls-height) + 8px
+    );
+    z-index: calc(var(--z-bottom-toolbar) - 1);
+    background-color: var(--color-overlay);
+    border: 1px solid var(--color-border-strong);
+    border-radius: 4px;
+    touch-action: none;
+}
+
+/* Outer box: the overall map bounds (subtle outline, no fill). */
+.bounds {
+    fill: none;
+    stroke: var(--color-border);
+    stroke-width: 1;
+}
+
+/* Inner box: the currently-visible region (translucent accent fill). This is the
+   only grabbable target — drag it to pan the main view. */
+.viewport {
+    fill: rgba(176, 73, 255, 0.25);
+    stroke: var(--color-accent-border);
+    stroke-width: 1;
+    cursor: grab;
+}
+
+.viewport:active {
+    cursor: grabbing;
+}
+
+/* Placed cameras as small unobtrusive dots on the minimap. */
+.camera {
+    fill: var(--color-text-muted);
+}
+
+/* Off-map indicator: an open chevron glyph (two strokes meeting at a tip) that
+   stands in for the viewfinder when it is fully off the minimap, pinned to the
+   border and pointing toward it. Stroked (not filled) in the viewfinder accent. */
+.chevron {
+    fill: none;
+    stroke: var(--color-accent-border);
+    stroke-width: 2;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+}

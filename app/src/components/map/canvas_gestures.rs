@@ -24,19 +24,16 @@ const DEFAULT_FOV: FieldOfView = FieldOfView {
 /// Smallest range a camera cone may be dragged to (centimeters).
 const MIN_RANGE_CM: i32 = 50;
 
-/// Screen-pixel radius (not world-space) within which a click near the
-/// first vertex of an in-progress wall draft closes the path into a loop.
-/// Screen-space, not world-space, so the target feels the same size
-/// regardless of zoom level.
-pub const CLOSE_LOOP_HIT_RADIUS_PX: f64 = 14.0;
-
-/// Screen-pixel radius (not world-space) within which the last two vertices
-/// of a just-finished wall draft are treated as the same double-click point
-/// (see the double-click-finish dedup in [`finish_wall_draft`]). Screen-space
-/// for the same reason as `CLOSE_LOOP_HIT_RADIUS_PX`: a world-space threshold
-/// would need to be huge at low zoom and negligible at high zoom to represent
-/// "the same physical click" either way.
-const DOUBLE_CLICK_DEDUP_RADIUS_PX: f64 = 6.0;
+/// Screen-pixel radius (not world-space) of a wall draft's two click targets:
+/// the first vertex (click closes the path into a loop) and the last vertex
+/// (click finishes the path open). Screen-space, not world-space, so the
+/// targets feel the same size regardless of zoom level.
+///
+/// The last-vertex target doubles as duplicate-vertex protection: a click
+/// that lands "on" the vertex just placed (including the second click of a
+/// habitual double-click) finishes the wall instead of appending a
+/// near-zero-length segment.
+pub const DRAFT_VERTEX_HIT_RADIUS_PX: f64 = 14.0;
 
 /// Convert a pointer event to canvas-relative pixels using a cached canvas
 /// origin (the canvas's viewport-relative top-left).
@@ -61,8 +58,15 @@ pub enum ToolDownAction {
     /// The click landed on the draft's first vertex: commit the path as a
     /// closed loop.
     CloseWallLoop(MapWall),
+    /// The click landed on the draft's last vertex: commit the path as an
+    /// open wall.
+    FinishWall(MapWall),
     /// Append the clicked point to the wall draft.
     ExtendWallDraft(Vec<Point>),
+    /// The click was consumed by the tool but does nothing (e.g. it landed on
+    /// a draft's only vertex, which can neither finish a wall nor usefully
+    /// append a duplicate point).
+    Ignore,
     /// First of the two door clicks: arm the second.
     SetDoorStart(Point),
     /// Second door click: commit the completed door.
@@ -89,21 +93,47 @@ pub fn tool_pointer_down(
             fov: DEFAULT_FOV,
         })),
         Tool::DrawWall { mut vertices } => {
-            // Close-loop hit-test: only meaningful once there's an actual loop
-            // to close (need >= 3 vertices before "closing" makes geometric
-            // sense — with fewer points it would just double back on itself).
-            if vertices.len() >= 3 {
-                let (v0_sx, v0_sy) =
-                    viewport.world_to_screen(vertices[0].x as f64, vertices[0].y as f64);
-                if distance(cx, cy, v0_sx, v0_sy) <= CLOSE_LOOP_HIT_RADIUS_PX {
-                    return Some(ToolDownAction::CloseWallLoop(MapWall {
+            let hit_vertex = |v: &Point| {
+                let (sx, sy) = viewport.world_to_screen(v.x as f64, v.y as f64);
+                distance(cx, cy, sx, sy) <= DRAFT_VERTEX_HIT_RADIUS_PX
+            };
+
+            // Close-loop hit-test on the first vertex: only meaningful once
+            // there's an actual loop to close (need >= 3 vertices before
+            // "closing" makes geometric sense — with fewer points it would
+            // just double back on itself). Checked before the last-vertex
+            // finish so that when both targets overlap on a tight draft, the
+            // click means the stronger intent (a closed wall).
+            if vertices.len() >= 3 && hit_vertex(&vertices[0]) {
+                return Some(ToolDownAction::CloseWallLoop(MapWall {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    vertices,
+                    closed: true,
+                    color: WallColor::default(),
+                }));
+            }
+
+            // Finish hit-test on the last vertex: click the vertex you just
+            // placed to end the path as an open wall. This target is also
+            // what keeps near-duplicate adjacent vertices out of the draft —
+            // any click that would land "on" the last vertex finishes
+            // instead of appending. With only one vertex there is nothing to
+            // finish (and appending a duplicate would create a zero-length
+            // segment), so the click is consumed but does nothing.
+            if let Some(last) = vertices.last()
+                && hit_vertex(last)
+            {
+                if vertices.len() >= 2 {
+                    return Some(ToolDownAction::FinishWall(MapWall {
                         id: uuid::Uuid::new_v4().to_string(),
                         vertices,
-                        closed: true,
+                        closed: false,
                         color: WallColor::default(),
                     }));
                 }
+                return Some(ToolDownAction::Ignore);
             }
+
             vertices.push(world_point);
             Some(ToolDownAction::ExtendWallDraft(vertices))
         }
@@ -360,38 +390,6 @@ pub fn pointer_up_commit(gesture: &Gesture, preview: &DragPreview) -> Option<Map
     }
 }
 
-/// Finish an open wall draft on double-click, returning the wall to commit
-/// (or `None` when the draft is too short to form a segment).
-///
-/// A double-click is physically two separate clicks in quick succession, both
-/// of which already ran through the pointer-down handler and each pushed a
-/// vertex at (approximately) the same point. The trailing duplicate is dropped
-/// so finishing a path doesn't leave a spurious extra vertex at the exact spot
-/// the user double-clicked. The dedup threshold is screen-space, not
-/// world-space: both points came from clicks at essentially the same physical
-/// pixel, but that maps to wildly different world-cm distances depending on
-/// zoom (e.g. 1px is 50 world-cm at minimum zoom), so a fixed world-space
-/// threshold would either over- or under-fire depending on zoom level.
-pub fn finish_wall_draft(mut vertices: Vec<Point>, viewport: Viewport) -> Option<MapWall> {
-    if vertices.len() >= 2 {
-        let last = vertices.len() - 1;
-        let (last_sx, last_sy) =
-            viewport.world_to_screen(vertices[last].x as f64, vertices[last].y as f64);
-        let (prev_sx, prev_sy) =
-            viewport.world_to_screen(vertices[last - 1].x as f64, vertices[last - 1].y as f64);
-        if distance(last_sx, last_sy, prev_sx, prev_sy) < DOUBLE_CLICK_DEDUP_RADIUS_PX {
-            vertices.pop();
-        }
-    }
-
-    (vertices.len() >= 2).then(|| MapWall {
-        id: uuid::Uuid::new_v4().to_string(),
-        vertices,
-        closed: false,
-        color: WallColor::default(),
-    })
-}
-
 /// Begin a two-finger pinch from the fingers' current positions.
 pub fn pinch_start(a: (f64, f64), b: (f64, f64)) -> Gesture {
     Gesture::Pinch {
@@ -484,7 +482,7 @@ mod tests {
                 vertices: draft.clone(),
             },
             unit_viewport(),
-            CLOSE_LOOP_HIT_RADIUS_PX - 1.0,
+            DRAFT_VERTEX_HIT_RADIUS_PX - 1.0,
             0.0,
         );
         let Some(ToolDownAction::CloseWallLoop(wall)) = action else {
@@ -493,11 +491,11 @@ mod tests {
         assert!(wall.closed);
         assert_eq!(wall.vertices.len(), 3);
 
-        // Outside the radius: appends a fourth vertex.
+        // Away from both the first and last vertices: appends a fourth vertex.
         let action = tool_pointer_down(
             Tool::DrawWall { vertices: draft },
             unit_viewport(),
-            CLOSE_LOOP_HIT_RADIUS_PX + 1.0,
+            DRAFT_VERTEX_HIT_RADIUS_PX + 1.0,
             0.0,
         );
         assert!(matches!(
@@ -522,6 +520,66 @@ mod tests {
             action,
             Some(ToolDownAction::ExtendWallDraft(v)) if v.len() == 3
         ));
+    }
+
+    #[test]
+    fn clicking_last_vertex_finishes_the_wall_open() {
+        let draft = vec![point(0, 0), point(100, 0)];
+        // Dead-on click.
+        let action = tool_pointer_down(
+            Tool::DrawWall {
+                vertices: draft.clone(),
+            },
+            unit_viewport(),
+            100.0,
+            0.0,
+        );
+        let Some(ToolDownAction::FinishWall(wall)) = action else {
+            panic!("expected FinishWall");
+        };
+        assert!(!wall.closed);
+        // The finishing click appends nothing.
+        assert_eq!(wall.vertices.len(), 2);
+
+        // A near miss within the hit radius also finishes (this is what
+        // keeps near-duplicate adjacent vertices out of the draft).
+        let action = tool_pointer_down(
+            Tool::DrawWall { vertices: draft },
+            unit_viewport(),
+            100.0 + DRAFT_VERTEX_HIT_RADIUS_PX - 1.0,
+            0.0,
+        );
+        assert!(matches!(action, Some(ToolDownAction::FinishWall(_))));
+    }
+
+    #[test]
+    fn clicking_a_drafts_only_vertex_is_consumed_but_inert() {
+        // Nothing to finish, and appending would create a zero-length
+        // segment — the click is swallowed.
+        let action = tool_pointer_down(
+            Tool::DrawWall {
+                vertices: vec![point(0, 0)],
+            },
+            unit_viewport(),
+            1.0,
+            1.0,
+        );
+        assert!(matches!(action, Some(ToolDownAction::Ignore)));
+    }
+
+    #[test]
+    fn close_loop_wins_when_first_and_last_vertex_targets_overlap() {
+        // First (0,0) and last (4,4) vertices are both within the hit radius
+        // of a click at (2,2); closing the loop is the stronger intent.
+        let action = tool_pointer_down(
+            Tool::DrawWall {
+                vertices: vec![point(0, 0), point(100, 0), point(4, 4)],
+            },
+            unit_viewport(),
+            2.0,
+            2.0,
+        );
+        assert!(matches!(action, Some(ToolDownAction::CloseWallLoop(_))));
     }
 
     #[test]
@@ -750,35 +808,6 @@ mod tests {
             commit,
             Some(MapCommit::MoveDoorEndpoint { start: false, .. })
         ));
-    }
-
-    #[test]
-    fn finish_wall_draft_drops_trailing_double_click_duplicate() {
-        // The double-click's two pointer-downs pushed two vertices at nearly
-        // the same point; the trailing one is dropped.
-        let wall = finish_wall_draft(
-            vec![point(0, 0), point(100, 0), point(100, 1)],
-            unit_viewport(),
-        )
-        .unwrap();
-        assert_eq!(wall.vertices.len(), 2);
-        assert!(!wall.closed);
-
-        // Distinct last vertex survives.
-        let wall = finish_wall_draft(
-            vec![point(0, 0), point(100, 0), point(100, 50)],
-            unit_viewport(),
-        )
-        .unwrap();
-        assert_eq!(wall.vertices.len(), 3);
-    }
-
-    #[test]
-    fn finish_wall_draft_rejects_too_short_drafts() {
-        assert!(finish_wall_draft(vec![], unit_viewport()).is_none());
-        assert!(finish_wall_draft(vec![point(0, 0)], unit_viewport()).is_none());
-        // Two vertices that dedup down to one also can't form a segment.
-        assert!(finish_wall_draft(vec![point(0, 0), point(1, 0)], unit_viewport()).is_none());
     }
 
     #[test]

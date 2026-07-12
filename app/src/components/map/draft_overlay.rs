@@ -5,7 +5,7 @@
 
 use dioxus::prelude::*;
 
-use crate::components::map::canvas_gestures::CLOSE_LOOP_HIT_RADIUS_PX;
+use crate::components::map::canvas_gestures::DRAFT_VERTEX_HIT_RADIUS_PX;
 use crate::components::map::geometry::distance;
 use crate::components::map::interaction::Tool;
 use crate::components::map::map_camera::MARKER_RADIUS_CM;
@@ -108,7 +108,7 @@ pub fn DraftOverlay(
                         let (v0_sx, v0_sy) = viewport
                             .read()
                             .world_to_screen(first.x as f64, first.y as f64);
-                        distance(cx, cy, v0_sx, v0_sy) <= CLOSE_LOOP_HIT_RADIUS_PX
+                        distance(cx, cy, v0_sx, v0_sy) <= DRAFT_VERTEX_HIT_RADIUS_PX
                     });
                     rsx! {
                         circle {
@@ -116,6 +116,33 @@ pub fn DraftOverlay(
                             "data-in-range": in_range,
                             cx: "{first.x}",
                             cy: "{first.y}",
+                            r: "{MARKER_RADIUS_CM}",
+                        }
+                    }
+                }
+            }
+
+            // Once there are enough vertices to form a wall, highlight the
+            // last vertex as the finish target — click it to end the path as
+            // an open wall (same threshold the pointerdown handler uses to
+            // commit the finish). Same affordance pattern as the close-loop
+            // target above.
+            if vertices.len() >= 2
+                && let Some(last) = vertices.last()
+            {
+                {
+                    let in_range = cursor_pos.read().is_some_and(|(cx, cy)| {
+                        let (v_sx, v_sy) = viewport
+                            .read()
+                            .world_to_screen(last.x as f64, last.y as f64);
+                        distance(cx, cy, v_sx, v_sy) <= DRAFT_VERTEX_HIT_RADIUS_PX
+                    });
+                    rsx! {
+                        circle {
+                            class: style::finish_target,
+                            "data-in-range": in_range,
+                            cx: "{last.x}",
+                            cy: "{last.y}",
                             r: "{MARKER_RADIUS_CM}",
                         }
                     }

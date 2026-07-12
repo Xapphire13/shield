@@ -9,8 +9,8 @@ use crate::components::layout::TopBar;
 use crate::components::map::bottom_panel::BottomPanel;
 use crate::components::map::camera_info::CameraInfo;
 use crate::components::map::canvas_gestures::{
-    MapCommit, PointerMoveOutcome, ToolDownAction, canvas_xy, finish_wall_draft, pinch_move,
-    pinch_start, pointer_move_transition, pointer_up_commit, tool_pointer_down,
+    MapCommit, PointerMoveOutcome, ToolDownAction, canvas_xy, pinch_move, pinch_start,
+    pointer_move_transition, pointer_up_commit, tool_pointer_down,
 };
 use crate::components::map::coord_readout::CoordReadout;
 use crate::components::map::draft_overlay::DraftOverlay;
@@ -416,13 +416,15 @@ pub fn MapView() -> Element {
                                 tool.set(Tool::Select);
                                 selection.set(Some(Selection::Camera(camera_id)));
                             }
-                            ToolDownAction::CloseWallLoop(wall) => {
+                            ToolDownAction::CloseWallLoop(wall)
+                            | ToolDownAction::FinishWall(wall) => {
                                 place_wall(wall);
                                 tool.set(Tool::Select);
                             }
                             ToolDownAction::ExtendWallDraft(vertices) => {
                                 tool.set(Tool::DrawWall { vertices });
                             }
+                            ToolDownAction::Ignore => {}
                             ToolDownAction::SetDoorStart(start) => {
                                 tool.set(Tool::PlaceDoor { start: Some(start) });
                             }
@@ -499,16 +501,6 @@ pub fn MapView() -> Element {
                 },
                 onpointerleave: move |_| {
                     cursor_pos.set(None);
-                },
-
-                // --- Finish an open wall path (double-click) ---
-                // See `finish_wall_draft` for the trailing-vertex dedup.
-                ondoubleclick: move |_| {
-                    let Tool::DrawWall { vertices } = tool.read().clone() else { return; };
-                    if let Some(wall) = finish_wall_draft(vertices, *viewport.read()) {
-                        place_wall(wall);
-                    }
-                    tool.set(Tool::Select);
                 },
 
                 // --- Touch pinch zoom ---

@@ -171,7 +171,7 @@ if [[ "$SKIP_BUILD" == false ]]; then
         -v "$PWD":/src \
         -v "$CARGO_CACHE_VOLUME":/usr/local/cargo/registry \
         "$BUILDER_IMAGE" \
-        bash -c "cargo build --release -p shield-service --target $TARGET && dx bundle --release -p shield-app"
+        bash -c "cargo build --release -p shield-service --target $TARGET && stylance app && dx bundle --release -p shield-app"
 
     if [[ ! -f "$BINARY_PATH" ]]; then
         print_error "Binary not found at $BINARY_PATH"

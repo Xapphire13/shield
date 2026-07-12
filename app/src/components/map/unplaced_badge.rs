@@ -2,6 +2,8 @@ use dioxus::prelude::*;
 use dioxus_free_icons::Icon;
 use dioxus_free_icons::icons::ld_icons::LdTriangleAlert;
 
+stylance::import_crate_style!(style, "src/components/map/unplaced_badge.module.css");
+
 /// Floating lower-left badge warning that some cameras have not been placed on
 /// the map. The host renders it only when `count > 0`, so it never shows a zero.
 ///
@@ -19,11 +21,11 @@ pub fn UnplacedBadge(
 
     rsx! {
         div {
-            class: "map-unplaced-badge",
+            class: style::container,
             title: "{message}",
             Icon { width: 16, height: 16, icon: LdTriangleAlert }
-            span { class: "map-unplaced-badge__count", "{count}" }
-            span { class: "map-unplaced-badge__tooltip", "{message}" }
+            span { class: style::count, "{count}" }
+            span { class: style::tooltip, "{message}" }
         }
     }
 }

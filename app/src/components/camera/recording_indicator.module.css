@@ -1,0 +1,7 @@
+.container {
+    --fill: var(--color-text-muted);
+}
+
+.container[data-recording="true"] {
+    --fill: var(--color-recording);
+}

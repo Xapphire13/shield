@@ -1,0 +1,5 @@
+.button[disabled="true"] {
+    background-color: var(--color-text-muted);
+    border-color: var(--color-border-strong);
+    cursor: default;
+}

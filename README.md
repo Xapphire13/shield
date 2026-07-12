@@ -265,8 +265,17 @@ Or manually:
 
 ### Local Development
 
-Run the service and web app side by side in a tmux session (destroyed on
-detach/exit):
+The web app's component styles are scoped CSS modules (`*.module.css` files
+co-located with their components), bundled into the gitignored
+`app/assets/styles.css` by the [stylance](https://github.com/basro/stylance-rs)
+CLI. One-time setup:
+
+```bash
+cargo install stylance-cli --locked
+```
+
+Run the service, web app, and stylance watcher together in a tmux session
+(destroyed on detach/exit):
 
 ```bash
 ./scripts/dev.sh
@@ -277,6 +286,9 @@ Or run them individually:
 ```bash
 # Run the service locally
 cargo run -p shield-service
+
+# Rebundle scoped component CSS on save (or one-shot without --watch)
+stylance --watch app
 
 # Run the web app locally
 dx serve -p shield-app

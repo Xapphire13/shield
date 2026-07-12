@@ -1,0 +1,110 @@
+/* Bottom tool strip shown while editing. Sits in the bottom zone and stacks
+   above the global navigation toolbar to visually replace it. */
+.container {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    min-height: var(--bottom-toolbar-height);
+    z-index: calc(var(--z-bottom-toolbar) + 1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background-color: var(--color-surface);
+    border-top: 1px solid var(--color-border);
+    padding: 8px 16px;
+}
+
+.tool {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-surface-highlight);
+    border: 1px solid var(--color-border-strong);
+    color: var(--color-text);
+    border-radius: 8px;
+    padding: 8px;
+    cursor: pointer;
+}
+
+.tool[data-active="true"] {
+    background: var(--color-accent);
+    border-color: var(--color-accent-border);
+}
+
+/* The contextual "Done" button is rare enough that a bare icon risks
+   ambiguity, so it pairs the icon with a visible text label. */
+.labeled {
+    gap: 6px;
+    padding: 8px 14px;
+}
+
+/* Camera picker sheet: a bottom sheet above the tool strip. */
+.picker {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: calc(var(--z-bottom-toolbar) + 2);
+    display: flex;
+    flex-direction: column;
+    max-height: 60vh;
+    background-color: var(--color-surface);
+    border-top: 1px solid var(--color-border);
+    border-radius: 12px 12px 0 0;
+    box-shadow: 0 -8px 24px var(--color-shadow);
+}
+
+.picker_header {
+    display: flex;
+    align-items: center;
+    padding: 16px;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.picker_title {
+    flex: 1;
+    font-weight: bold;
+}
+
+.picker_close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    color: var(--color-text);
+    cursor: pointer;
+    padding: 4px;
+}
+
+.picker_list {
+    overflow-y: auto;
+}
+
+.picker_item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    border-bottom: 1px solid var(--color-border);
+    color: var(--color-text);
+    font-family: inherit;
+    font-size: 1rem;
+    padding: 14px 16px;
+    cursor: pointer;
+}
+
+@media (hover: hover) {
+    .picker_item:hover {
+        background-color: var(--color-surface-highlight);
+    }
+}
+
+.picker_empty {
+    padding: 24px 16px;
+    color: var(--color-text-muted);
+    text-align: center;
+}

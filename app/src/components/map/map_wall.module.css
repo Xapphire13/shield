@@ -1,0 +1,52 @@
+/* A placed wall/fence. Stroke color comes from the wall's chosen WallColor,
+   fed in as the `--wall-stroke-color` custom property via an inline `style`
+   on the `<path>` (see `map_wall.rs`) — deliberately not an inline `stroke`,
+   since an inline style would beat the `[data-selected="true"]` rule below
+   regardless of specificity and permanently mask the selection highlight.
+   `--color-border-strong` is a fallback for the (currently unreachable) case
+   where the custom property is unset. Purely decorative — `pointer-events:
+   none`, since the invisible `.hit_area` (below) owns clicking.
+   Its width is in world-space cm, so it scales with zoom like the wall's
+   true footprint. */
+.stroke {
+    stroke: var(--wall-stroke-color, var(--color-border-strong));
+    stroke-width: 6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    pointer-events: none;
+}
+
+/* Invisible click target, layered over the visible stroke. A constant
+   screen-pixel width (`non-scaling-stroke`) rather than the visible stroke's
+   world-space width, so the wall stays comfortably clickable even when
+   zoomed out far enough to shrink the visible line to a sliver. */
+.hit_area {
+    stroke: transparent;
+    stroke-width: 20px;
+    vector-effect: non-scaling-stroke;
+    pointer-events: stroke;
+}
+
+/* Keyed on `data-interactive`, not `data-editing` — a wall stays inert (no
+   pointer affordance) while a different tool is armed or a picker is open,
+   even though the map is still in edit mode. */
+.container[data-interactive="true"] .hit_area {
+    cursor: pointer;
+}
+
+/* Selected wall: emphasize its stroke, same treatment as a selected camera's
+   marker/fov. */
+.container[data-selected="true"] .stroke {
+    stroke: var(--color-accent);
+    stroke-width: 7;
+}
+
+/* On-canvas vertex drag handles for the selected wall, shown once selected
+   and editing. Similar visual weight to the camera's `.handle`. */
+.vertex_handle {
+    fill: var(--color-surface);
+    stroke: var(--color-text);
+    stroke-width: 1.5px;
+    vector-effect: non-scaling-stroke;
+    cursor: move;
+}

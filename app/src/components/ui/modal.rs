@@ -1,11 +1,13 @@
 use dioxus::prelude::*;
 
+stylance::import_crate_style!(style, "src/components/ui/modal.module.css");
+
 #[component]
 pub fn Modal(children: Element, on_close: Callback) -> Element {
     rsx! {
-        div { class: "modal-container", onclick: move |_| on_close(()),
+        div { class: style::container, onclick: move |_| on_close(()),
             div {
-                class: "modal",
+                class: style::modal,
                 onclick: |ev| {
                     ev.stop_propagation();
                 },
@@ -18,20 +20,20 @@ pub fn Modal(children: Element, on_close: Callback) -> Element {
 #[component]
 pub fn ModalHeader(children: Element) -> Element {
     rsx! {
-        div { class: "modal-header", {children} }
+        div { class: style::header, {children} }
     }
 }
 
 #[component]
 pub fn ModalBody(children: Element) -> Element {
     rsx! {
-        div { class: "modal-body", {children} }
+        div { class: style::body, {children} }
     }
 }
 
 #[component]
 pub fn ModalFooter(children: Element) -> Element {
     rsx! {
-        div { class: "modal-footer", {children} }
+        div { class: style::footer, {children} }
     }
 }

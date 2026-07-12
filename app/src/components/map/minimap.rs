@@ -1,5 +1,7 @@
 use dioxus::prelude::*;
 
+stylance::import_crate_style!(style, "src/components/map/minimap.module.css");
+
 /// Longest edge of the minimap SVG, in screen pixels. The other edge is derived
 /// from the content bounds' aspect ratio so the minimap never distorts the map.
 const MINIMAP_MAX_EDGE: f64 = 160.0;
@@ -16,7 +18,7 @@ const CAMERA_DOT_RADIUS: f64 = 2.0;
 
 /// DOM id of the minimap SVG element, used to measure its own bounding rect so
 /// pointer positions can be made minimap-relative (see [`Minimap`]).
-const MINIMAP_ID: &str = "map-minimap";
+const MINIMAP_ID: &str = style::container;
 
 /// Read the minimap's bounding rect as `(left, top, width, height)` in viewport
 /// pixels, or `None` if it isn't in the DOM yet.
@@ -133,7 +135,7 @@ pub fn Minimap(
     rsx! {
         svg {
             id: MINIMAP_ID,
-            class: "map-minimap",
+            class: style::container,
             xmlns: "http://www.w3.org/2000/svg",
             // Explicit pixel dimensions: the minimap is fixed-size, and a
             // viewBox-less SVG without them collapses to its intrinsic size on
@@ -168,7 +170,7 @@ pub fn Minimap(
 
             // Outer box: the overall map bounds.
             rect {
-                class: "map-minimap__bounds",
+                class: style::bounds,
                 x: "0",
                 y: "0",
                 width: "{box_w}",
@@ -178,7 +180,7 @@ pub fn Minimap(
             // Placed cameras as small dots.
             for (dx, dy) in dots.iter().copied() {
                 circle {
-                    class: "map-minimap__camera",
+                    class: style::camera,
                     cx: "{dx}",
                     cy: "{dy}",
                     r: "{CAMERA_DOT_RADIUS}",
@@ -188,10 +190,10 @@ pub fn Minimap(
             // Viewfinder: a clipped rect while overlapping, else an off-map
             // chevron pinned to the border pointing toward it.
             if let Some(path) = chevron {
-                path { class: "map-minimap__chevron", d: "{path}" }
+                path { class: style::chevron, d: "{path}" }
             } else if overlaps {
                 rect {
-                    class: "map-minimap__viewport",
+                    class: style::viewport,
                     x: "{cx0}",
                     y: "{cy0}",
                     width: "{clip_w}",

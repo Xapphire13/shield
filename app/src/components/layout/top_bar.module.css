@@ -1,0 +1,38 @@
+/* Shared top bar for the primary views: a centered title flanked by optional
+   side controls (e.g. the map's undo/redo on the left and Edit toggle on the
+   right). A solid bar in normal flow above the view's content. */
+.container {
+    /* Equal-width side zones keep the title centered on the whole bar
+       regardless of the side controls' widths: start | title | actions. Both
+       side zones are always rendered (empty when a view supplies no controls)
+       so the two 1fr columns stay equal. */
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    /* Fixed height (sized to the controls) so showing/hiding side controls —
+       e.g. the map's undo/redo on Edit toggle — never resizes the bar. */
+    min-height: 52px;
+    background-color: var(--color-surface);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.start {
+    justify-self: start;
+    display: flex;
+    gap: 4px;
+}
+
+.actions {
+    justify-self: end;
+    display: flex;
+    gap: 4px;
+}
+
+.title {
+    justify-self: center;
+    text-align: center;
+    font-weight: bold;
+    text-shadow: 0 1px 2px var(--color-shadow);
+}

@@ -1,0 +1,18 @@
+/* List view: stack a flush top bar above a scrollable, inset content area,
+   mirroring the map view's bar + content stacking. The bar sits flush against
+   the page edges; the content carries the inset (with clearance for the fixed
+   bottom toolbar). */
+.container {
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.content {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 16px;
+    padding-bottom: calc(16px + var(--bottom-toolbar-height));
+}

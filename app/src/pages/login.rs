@@ -9,6 +9,8 @@ use crate::{
 };
 use dioxus::prelude::*;
 
+stylance::import_crate_style!(style, "src/pages/login.module.css");
+
 #[component]
 pub fn Login() -> Element {
     let nav = navigator();
@@ -36,9 +38,9 @@ pub fn Login() -> Element {
     });
 
     rsx! {
-        div { class: "login-container",
-            div { class: "login-card",
-                div { class: "otp-heading", "Enter OTP Code" }
+        div { class: style::container,
+            div { class: style::card,
+                div { class: style::heading, "Enter OTP Code" }
                 OtpInput {
                     value: code(),
                     on_change: handle_code_changed,

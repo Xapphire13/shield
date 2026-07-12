@@ -3,6 +3,8 @@ use web_sys::wasm_bindgen::JsCast;
 
 use crate::utils::focus_element;
 
+stylance::import_crate_style!(style, "src/components/forms/otp_input.module.css");
+
 #[component]
 pub fn OtpInput(
     value: [char; 6],
@@ -83,7 +85,7 @@ pub fn OtpInput(
     };
 
     rsx! {
-        div { class: "otp-input-container",
+        div { class: style::container,
             {
                 value
                     .iter()

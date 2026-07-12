@@ -1,15 +1,17 @@
 use dioxus::prelude::*;
 
+stylance::import_crate_style!(style, "src/components/layout/row_group.module.css");
+
 #[component]
 pub fn RowGroup(label: String, actions: Element, children: Element) -> Element {
     rsx! {
-        div { class: "row-group",
-            div { class: "row-group__header",
-                div { class: "row-group__label", {label} }
+        div { class: style::container,
+            div { class: style::header,
+                div { class: style::label, {label} }
 
                 {actions}
             }
-            div { class: "row-group__children", {children} }
+            div { class: style::children, {children} }
         }
     }
 }

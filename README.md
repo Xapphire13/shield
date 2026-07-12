@@ -132,11 +132,8 @@ sudo systemctl status caddy
 Use the provided deployment script for easier deployment:
 
 ```bash
-# Make the script executable (first time only)
-chmod +x deploy/deploy.sh
-
 # Deploy to target Raspberry Pi
-./deploy/deploy.sh pi@192.168.1.100
+./scripts/deploy.sh pi@192.168.1.100
 ```
 
 The script will:
@@ -224,7 +221,7 @@ To update the service:
 
 2. Use the deployment script for automatic update:
    ```bash
-   ./deploy/deploy.sh pi@192.168.1.100
+   ./scripts/deploy.sh pi@192.168.1.100
    ```
 
 Or manually:
@@ -267,6 +264,16 @@ Or manually:
 ## Development
 
 ### Local Development
+
+Run the service and web app side by side in a tmux session (destroyed on
+detach/exit):
+
+```bash
+./scripts/dev.sh
+```
+
+Or run them individually:
+
 ```bash
 # Run the service locally
 cargo run -p shield-service

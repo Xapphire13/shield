@@ -126,11 +126,8 @@ if [[ -z "$PI_HOST" ]]; then
     exit 1
 fi
 
-# Check if we're in the right directory
-if [[ ! -f "Cargo.toml" ]] || [[ ! -d "service" ]]; then
-    print_error "Please run this script from the shield project root directory"
-    exit 1
-fi
+# Run from the repository root regardless of the caller's cwd
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 # Build the project (unless skipped)
 BINARY_PATH="target/$TARGET/release/$SERVICE_NAME"

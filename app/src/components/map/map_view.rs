@@ -23,6 +23,7 @@ use crate::components::map::map_camera::MapCameraMarker;
 use crate::components::map::map_door::{Endpoint, MapDoorMarker};
 use crate::components::map::map_wall::MapWallPath;
 use crate::components::map::minimap::Minimap;
+use crate::components::map::scale_bar::{ScaleBar, format_scale_label};
 use crate::components::map::unplaced_badge::UnplacedBadge;
 use crate::components::map::viewport::{BUTTON_ZOOM_STEP, Viewport, WHEEL_ZOOM_STEP};
 use crate::components::map::zoom_controls::ZoomControls;
@@ -784,6 +785,15 @@ pub fn MapView() -> Element {
                         vp.pan_y = ch / 2.0 - wy * zoom;
                     },
                 }
+            }
+
+            // --- Scale bar (persistent, bottom-center) ---
+            // Always one grid square wide, so it shares the grid's "nice"
+            // 1-2-5 stepping (see `Viewport::grid_spacing_cm`) instead of
+            // needing its own target-length logic.
+            ScaleBar {
+                width_px: grid_spacing_cm * viewport.read().zoom,
+                label: format_scale_label(grid_spacing_cm),
             }
 
             // --- Unplaced-camera badge (lower-left) ---

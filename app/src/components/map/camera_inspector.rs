@@ -59,7 +59,7 @@ pub fn CameraInspector(
 
             FovSlider {
                 label: "Direction",
-                unit: "°",
+                display_value: format!("{}°", fov.direction_deg),
                 min: 0,
                 max: 359,
                 value: fov.direction_deg as i32,
@@ -85,7 +85,7 @@ pub fn CameraInspector(
 
             FovSlider {
                 label: "Field of View",
-                unit: "°",
+                display_value: format!("{}°", fov.angle_deg),
                 min: 1,
                 max: 359,
                 value: fov.angle_deg as i32,
@@ -111,7 +111,7 @@ pub fn CameraInspector(
 
             FovSlider {
                 label: "Range",
-                unit: "cm",
+                display_value: format!("{:.2} m", fov.range as f64 / 100.0),
                 min: 50,
                 max: 5000,
                 value: fov.range,
@@ -144,7 +144,7 @@ pub fn CameraInspector(
 #[component]
 fn FovSlider(
     label: String,
-    unit: String,
+    display_value: String,
     min: i32,
     max: i32,
     value: i32,
@@ -155,7 +155,7 @@ fn FovSlider(
         label { class: style::field,
             div { class: style::field_label,
                 span { "{label}" }
-                span { class: style::field_value, "{value}{unit}" }
+                span { class: style::field_value, "{display_value}" }
             }
             input {
                 r#type: "range",
